@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Training outputs (generated during training)
+training_logs/
+checkpoints/
+*.pt.bak
+
+# Environment files with secrets
+.env
+key.txt
+groq_key.txt
+*_key.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Large model downloads (will be auto-downloaded)
+# Keep pretrained_models/ and models/ as they contain our trained models
+
+# Test outputs
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data files that shouldn't be tracked
+*.csv
+!results/*.csv
+
+# Tensorboard
+runs/
+events.out.tfevents.*
