@@ -1,0 +1,1022 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "mcp-excalidraw-server",
+  "elements": [
+    {
+      "id": "mmp1je5zsn5r43l7c",
+      "type": "text",
+      "x": 350,
+      "y": 15,
+      "strokeColor": "#1e1e1e",
+      "text": "Visitor State Machine — HRL Museum Agent",
+      "fontSize": 28,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:17:40.355Z",
+      "updatedAt": "2026-03-13T15:17:40.355Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1je5z858oygpn2l",
+      "type": "text",
+      "x": 330,
+      "y": 55,
+      "strokeColor": "#868e96",
+      "text": "Literature-grounded visitor engagement simulation for museum guide RL training",
+      "fontSize": 16,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:17:40.355Z",
+      "updatedAt": "2026-03-13T15:17:40.355Z",
+      "version": 1
+    },
+    {
+      "id": "highly_engaged",
+      "type": "rectangle",
+      "x": 680,
+      "y": 120,
+      "width": 260,
+      "height": 90,
+      "backgroundColor": "#b2f2bb",
+      "strokeColor": "#2f9e44",
+      "strokeWidth": 2,
+      "roughness": 1,
+      "label": {
+        "text": "HIGHLY ENGAGED\n(0.90 – 1.00)"
+      },
+      "fontSize": 18,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:17:40.356Z",
+      "updatedAt": "2026-03-13T15:17:40.356Z",
+      "version": 1
+    },
+    {
+      "id": "engaged",
+      "type": "rectangle",
+      "x": 660,
+      "y": 370,
+      "width": 300,
+      "height": 100,
+      "backgroundColor": "#a5d8ff",
+      "strokeColor": "#1971c2",
+      "strokeWidth": 3,
+      "roughness": 1,
+      "label": {
+        "text": "ENGAGED\n(0.75 – 0.90)"
+      },
+      "fontSize": 22,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:17:40.356Z",
+      "updatedAt": "2026-03-13T15:17:40.356Z",
+      "version": 1
+    },
+    {
+      "id": "curious",
+      "type": "rectangle",
+      "x": 80,
+      "y": 340,
+      "width": 220,
+      "height": 90,
+      "backgroundColor": "#eebefa",
+      "strokeColor": "#9c36b5",
+      "strokeWidth": 2,
+      "roughness": 1,
+      "label": {
+        "text": "CURIOUS\n(0.55 – 0.70)"
+      },
+      "fontSize": 18,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:17:40.356Z",
+      "updatedAt": "2026-03-13T15:17:40.356Z",
+      "version": 1
+    },
+    {
+      "id": "confused",
+      "type": "rectangle",
+      "x": 20,
+      "y": 600,
+      "width": 220,
+      "height": 90,
+      "backgroundColor": "#ffc9c9",
+      "strokeColor": "#e03131",
+      "strokeWidth": 2,
+      "roughness": 1,
+      "label": {
+        "text": "CONFUSED\n(0.20 – 0.35)"
+      },
+      "fontSize": 18,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:17:40.356Z",
+      "updatedAt": "2026-03-13T15:17:40.356Z",
+      "version": 1
+    },
+    {
+      "id": "bored",
+      "type": "rectangle",
+      "x": 260,
+      "y": 700,
+      "width": 260,
+      "height": 90,
+      "backgroundColor": "#ffd8a8",
+      "strokeColor": "#e8590c",
+      "strokeWidth": 2,
+      "roughness": 1,
+      "label": {
+        "text": "BORED OF TOPIC\n(0.45 – 0.60)"
+      },
+      "fontSize": 18,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:17:40.356Z",
+      "updatedAt": "2026-03-13T15:17:40.356Z",
+      "version": 1
+    },
+    {
+      "id": "overloaded",
+      "type": "rectangle",
+      "x": 630,
+      "y": 700,
+      "width": 260,
+      "height": 90,
+      "backgroundColor": "#ffc9c9",
+      "strokeColor": "#e03131",
+      "strokeWidth": 2,
+      "roughness": 1,
+      "label": {
+        "text": "OVERLOADED\n(0.30 – 0.45)"
+      },
+      "fontSize": 18,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:17:40.356Z",
+      "updatedAt": "2026-03-13T15:17:40.356Z",
+      "version": 1
+    },
+    {
+      "id": "fatigued",
+      "type": "rectangle",
+      "x": 1020,
+      "y": 700,
+      "width": 220,
+      "height": 90,
+      "backgroundColor": "#ffd8a8",
+      "strokeColor": "#e8590c",
+      "strokeWidth": 2,
+      "roughness": 1,
+      "label": {
+        "text": "FATIGUED\n(0.40 – 0.55)"
+      },
+      "fontSize": 18,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:17:40.356Z",
+      "updatedAt": "2026-03-13T15:17:40.356Z",
+      "version": 1
+    },
+    {
+      "id": "ready",
+      "type": "rectangle",
+      "x": 1240,
+      "y": 340,
+      "width": 280,
+      "height": 90,
+      "backgroundColor": "#ffd8a8",
+      "strokeColor": "#e8590c",
+      "strokeWidth": 2,
+      "roughness": 1,
+      "label": {
+        "text": "READY TO MOVE\n(0.50 – 0.65)"
+      },
+      "fontSize": 18,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:17:40.356Z",
+      "updatedAt": "2026-03-13T15:17:40.356Z",
+      "version": 1
+    },
+    {
+      "id": "disengaged",
+      "type": "rectangle",
+      "x": 1260,
+      "y": 600,
+      "width": 240,
+      "height": 90,
+      "backgroundColor": "#ffc9c9",
+      "strokeColor": "#e03131",
+      "strokeWidth": 2,
+      "roughness": 1,
+      "label": {
+        "text": "DISENGAGED\n(0.05 – 0.15)"
+      },
+      "fontSize": 18,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:17:40.356Z",
+      "updatedAt": "2026-03-13T15:17:40.356Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1ju1otmz494wpvz",
+      "type": "arrow",
+      "x": 810,
+      "y": 362,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#2f9e44",
+      "strokeWidth": 2,
+      "label": {
+        "text": "3+ varied actions"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          -144
+        ]
+      ],
+      "start": {
+        "id": "engaged"
+      },
+      "end": {
+        "id": "highly_engaged"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:00.930Z",
+      "updatedAt": "2026-03-13T15:18:00.930Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1ju1oh3simvg0l3r",
+      "type": "arrow",
+      "x": 810,
+      "y": 218,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#868e96",
+      "strokeWidth": 2,
+      "strokeStyle": "dotted",
+      "label": {
+        "text": "decay (2 turns)"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          144
+        ]
+      ],
+      "start": {
+        "id": "highly_engaged"
+      },
+      "end": {
+        "id": "engaged"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:00.930Z",
+      "updatedAt": "2026-03-13T15:18:00.930Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1ju1ofarm0zyl3gc",
+      "type": "arrow",
+      "x": 652.0127167522935,
+      "y": 411.0813630424681,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#e03131",
+      "strokeWidth": 2,
+      "strokeStyle": "dashed",
+      "label": {
+        "text": "random ~30%"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -344.02543350458706,
+          -19.420790601065335
+        ]
+      ],
+      "start": {
+        "id": "engaged"
+      },
+      "end": {
+        "id": "curious"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:00.930Z",
+      "updatedAt": "2026-03-13T15:18:00.930Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1ju1oxvmfc4hdonp",
+      "type": "arrow",
+      "x": 652.4049675248667,
+      "y": 472.1454151572132,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#e03131",
+      "strokeWidth": 2,
+      "strokeStyle": "dashed",
+      "label": {
+        "text": "random ~20%"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -404.80993504973344,
+          133.94446380322069
+        ]
+      ],
+      "start": {
+        "id": "engaged"
+      },
+      "end": {
+        "id": "confused"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:00.930Z",
+      "updatedAt": "2026-03-13T15:18:00.930Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1ju1ol86f1291na",
+      "type": "arrow",
+      "x": 739.0576497809034,
+      "y": 474.89586624096756,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#e03131",
+      "strokeWidth": 2,
+      "strokeStyle": "dashed",
+      "label": {
+        "text": "same topic 3+"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -284.5768380233453,
+          220.20826751806482
+        ]
+      ],
+      "start": {
+        "id": "engaged"
+      },
+      "end": {
+        "id": "bored"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:00.930Z",
+      "updatedAt": "2026-03-13T15:18:00.930Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1ju1ocbnsr12sg7q",
+      "type": "arrow",
+      "x": 801.0912348336608,
+      "y": 477.90697358120497,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#e03131",
+      "strokeWidth": 2,
+      "strokeStyle": "dashed",
+      "label": {
+        "text": "3+ explains"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -32.951700436552414,
+          214.18605283759007
+        ]
+      ],
+      "start": {
+        "id": "engaged"
+      },
+      "end": {
+        "id": "overloaded"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:00.930Z",
+      "updatedAt": "2026-03-13T15:18:00.930Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1ju1ojazcxj9nslf",
+      "type": "arrow",
+      "x": 864.8436032547321,
+      "y": 475.7005345555873,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#e03131",
+      "strokeWidth": 2,
+      "strokeStyle": "dashed",
+      "label": {
+        "text": "no question 3+"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          215.2358704136126,
+          218.5989308888254
+        ]
+      ],
+      "start": {
+        "id": "engaged"
+      },
+      "end": {
+        "id": "fatigued"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:00.930Z",
+      "updatedAt": "2026-03-13T15:18:00.930Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1ju1onz7iv8zlx9n",
+      "type": "arrow",
+      "x": 967.9849609504267,
+      "y": 410.2991690644475,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#e03131",
+      "strokeWidth": 2,
+      "strokeStyle": "dashed",
+      "label": {
+        "text": "80%+ & 4+ turns"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          264.0300780991465,
+          -16.212373216614253
+        ]
+      ],
+      "start": {
+        "id": "engaged"
+      },
+      "end": {
+        "id": "ready"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:00.930Z",
+      "updatedAt": "2026-03-13T15:18:00.930Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1k5xerab41m6dmn",
+      "type": "arrow",
+      "x": 307.98728324770644,
+      "y": 391.6605724414028,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#2f9e44",
+      "strokeWidth": 2,
+      "label": {
+        "text": "Explain+fact (90%)"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          344.02543350458706,
+          19.420790601065335
+        ]
+      ],
+      "start": {
+        "id": "curious"
+      },
+      "end": {
+        "id": "engaged"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:16.324Z",
+      "updatedAt": "2026-03-13T15:18:16.324Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1k5xe021l2igf3m41",
+      "type": "arrow",
+      "x": 247.59503247513325,
+      "y": 606.0898789604339,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#2f9e44",
+      "strokeWidth": 2,
+      "label": {
+        "text": "ClarifyFact (90%)"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          404.80993504973344,
+          -133.94446380322069
+        ]
+      ],
+      "start": {
+        "id": "confused"
+      },
+      "end": {
+        "id": "engaged"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:16.324Z",
+      "updatedAt": "2026-03-13T15:18:16.324Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1k5xeb85b9j2se0a",
+      "type": "arrow",
+      "x": 454.48081175755806,
+      "y": 695.1041337590324,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#2f9e44",
+      "strokeWidth": 2,
+      "label": {
+        "text": "New topic (85%)"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          284.5768380233453,
+          -220.20826751806482
+        ]
+      ],
+      "start": {
+        "id": "bored"
+      },
+      "end": {
+        "id": "engaged"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:16.324Z",
+      "updatedAt": "2026-03-13T15:18:16.324Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1k5xebvmbhhsifyk",
+      "type": "arrow",
+      "x": 768.1395343971084,
+      "y": 692.093026418795,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#2f9e44",
+      "strokeWidth": 2,
+      "label": {
+        "text": "AskQuestion (85%)"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          32.951700436552414,
+          -214.18605283759007
+        ]
+      ],
+      "start": {
+        "id": "overloaded"
+      },
+      "end": {
+        "id": "engaged"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:16.324Z",
+      "updatedAt": "2026-03-13T15:18:16.324Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1k5xeejgtv4qolp8",
+      "type": "arrow",
+      "x": 1080.0794736683447,
+      "y": 694.2994654444127,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#2f9e44",
+      "strokeWidth": 2,
+      "label": {
+        "text": "AskQuestion (80%)"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -215.2358704136126,
+          -218.5989308888254
+        ]
+      ],
+      "start": {
+        "id": "fatigued"
+      },
+      "end": {
+        "id": "engaged"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:16.324Z",
+      "updatedAt": "2026-03-13T15:18:16.324Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1k5xe1wbt4j12lsu",
+      "type": "arrow",
+      "x": 1232.0150390495733,
+      "y": 394.08679584783323,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#2f9e44",
+      "strokeWidth": 2,
+      "label": {
+        "text": "Transition (95%)"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -264.0300780991465,
+          16.212373216614253
+        ]
+      ],
+      "start": {
+        "id": "ready"
+      },
+      "end": {
+        "id": "engaged"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:16.324Z",
+      "updatedAt": "2026-03-13T15:18:16.324Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1k5xe619q8o4aat3",
+      "type": "arrow",
+      "x": 1258.5587582293495,
+      "y": 597.0626677221117,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#2f9e44",
+      "strokeWidth": 2,
+      "label": {
+        "text": "Transition (50%)"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -314.4508497920323,
+          -124.12533544422325
+        ]
+      ],
+      "start": {
+        "id": "disengaged"
+      },
+      "end": {
+        "id": "engaged"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:16.324Z",
+      "updatedAt": "2026-03-13T15:18:16.324Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1k5xeeu375k83qn5",
+      "type": "arrow",
+      "x": 1380,
+      "y": 438,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#868e96",
+      "strokeWidth": 2,
+      "strokeStyle": "dotted",
+      "label": {
+        "text": "3+ turns ignored"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          154
+        ]
+      ],
+      "start": {
+        "id": "ready"
+      },
+      "end": {
+        "id": "disengaged"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:16.324Z",
+      "updatedAt": "2026-03-13T15:18:16.324Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1k5xee32efak84p",
+      "type": "arrow",
+      "x": 177.81650856179454,
+      "y": 437.795129565557,
+      "width": 1,
+      "height": 1,
+      "strokeColor": "#868e96",
+      "strokeWidth": 2,
+      "strokeStyle": "dotted",
+      "label": {
+        "text": "AskQ deflection (50%)"
+      },
+      "fontSize": 14,
+      "fontFamily": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -35.63301712358907,
+          154.40974086888605
+        ]
+      ],
+      "start": {
+        "id": "curious"
+      },
+      "end": {
+        "id": "confused"
+      },
+      "endArrowhead": "arrow",
+      "createdAt": "2026-03-13T15:18:16.324Z",
+      "updatedAt": "2026-03-13T15:18:16.324Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3ychzmdkshxc",
+      "type": "rectangle",
+      "x": 40,
+      "y": 870,
+      "width": 580,
+      "height": 180,
+      "backgroundColor": "#e9ecef",
+      "strokeColor": "#868e96",
+      "strokeWidth": 1,
+      "roughness": 1,
+      "opacity": 60,
+      "createdAt": "2026-03-13T15:18:34.098Z",
+      "updatedAt": "2026-03-13T15:18:34.098Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn37kxuakvhosb",
+      "type": "text",
+      "x": 60,
+      "y": 880,
+      "strokeColor": "#1e1e1e",
+      "text": "Legend",
+      "fontSize": 20,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3jpa8ubixeh",
+      "type": "text",
+      "x": 60,
+      "y": 915,
+      "strokeColor": "#e03131",
+      "text": "───▶  Red dashed = Trigger (ENGAGED → negative state)",
+      "fontSize": 15,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3szsuuj32p",
+      "type": "text",
+      "x": 60,
+      "y": 945,
+      "strokeColor": "#2f9e44",
+      "text": "───▶  Green solid = Recovery (back to ENGAGED)",
+      "fontSize": 15,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3gzsrxhwr3q6",
+      "type": "text",
+      "x": 60,
+      "y": 975,
+      "strokeColor": "#868e96",
+      "text": "·····▶  Gray dotted = Escalation / Decay",
+      "fontSize": 15,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3d0px4haaxaq",
+      "type": "text",
+      "x": 60,
+      "y": 1010,
+      "strokeColor": "#868e96",
+      "text": "Dwell ranges = engagement signal (0.0–1.0) used as RL reward",
+      "fontSize": 14,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3muomn9br2g9",
+      "type": "rectangle",
+      "x": 680,
+      "y": 870,
+      "width": 580,
+      "height": 180,
+      "backgroundColor": "#e9ecef",
+      "strokeColor": "#868e96",
+      "strokeWidth": 1,
+      "roughness": 1,
+      "opacity": 60,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3ikxfhjphjz",
+      "type": "text",
+      "x": 700,
+      "y": 880,
+      "strokeColor": "#1e1e1e",
+      "text": "Persona Profiles (modify thresholds)",
+      "fontSize": 18,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3jatcd94o6ar",
+      "type": "text",
+      "x": 700,
+      "y": 915,
+      "strokeColor": "#868e96",
+      "text": "Explorer:  curiosity 40%, overload 5, patient",
+      "fontSize": 14,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3e5h1e6vybpe",
+      "type": "text",
+      "x": 700,
+      "y": 940,
+      "strokeColor": "#868e96",
+      "text": "Focused:   curiosity 20%, overload 3, steady",
+      "fontSize": 14,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3uypemw1qa5q",
+      "type": "text",
+      "x": 700,
+      "y": 965,
+      "strokeColor": "#868e96",
+      "text": "Impatient: curiosity 30%, overload 3, fast boredom",
+      "fontSize": 14,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3iizpbhm5a3",
+      "type": "text",
+      "x": 700,
+      "y": 1000,
+      "strokeColor": "#868e96",
+      "text": "Recovery fatigue: -15% per recovery (max -45%)",
+      "fontSize": 14,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn33ye4fuukh3u",
+      "type": "text",
+      "x": 700,
+      "y": 480,
+      "strokeColor": "#1971c2",
+      "text": "Hub state — all sessions start here",
+      "fontSize": 14,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3qqn258g26t9",
+      "type": "text",
+      "x": 700,
+      "y": 90,
+      "strokeColor": "#2f9e44",
+      "text": "Peak engagement",
+      "fontSize": 14,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    },
+    {
+      "id": "mmp1kjn3dtg5a95g16a",
+      "type": "text",
+      "x": 1280,
+      "y": 695,
+      "strokeColor": "#e03131",
+      "text": "Terminal — hard to recover",
+      "fontSize": 14,
+      "fontFamily": 2,
+      "createdAt": "2026-03-13T15:18:34.099Z",
+      "updatedAt": "2026-03-13T15:18:34.099Z",
+      "version": 1
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff",
+    "gridSize": null
+  }
+}

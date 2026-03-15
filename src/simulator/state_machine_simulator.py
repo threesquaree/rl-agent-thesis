@@ -39,17 +39,17 @@ class VisitorState(Enum):
     DISENGAGED = "disengaged"     # Visitor has given up (0.05-0.15)
 
 
-# Dwell ranges per state (state-specific engagement signals)
+# Dwell ranges per state (from Daniel's thesis Table 7 - non-overlapping design)
 DWELL_RANGES = {
-    VisitorState.HIGHLY_ENGAGED: (0.85, 0.95),  # Best possible - visitor is captivated
-    VisitorState.ENGAGED: (0.50, 0.75),  # Lowered from (0.75, 0.90) for more realistic baseline
-    VisitorState.CURIOUS: (0.55, 0.70),
-    VisitorState.READY_TO_MOVE: (0.40, 0.55),  # Lowered to reflect impatience
-    VisitorState.BORED_OF_TOPIC: (0.45, 0.60),  # Wants variety but still interested
-    VisitorState.FATIGUED: (0.40, 0.55),
-    VisitorState.OVERLOADED: (0.30, 0.45),
-    VisitorState.CONFUSED: (0.30, 0.45),  # Was (0.20, 0.35) - less punishing
-    VisitorState.DISENGAGED: (0.05, 0.15),  # Worst possible - visitor has given up
+    VisitorState.HIGHLY_ENGAGED: (0.90, 1.00),  # Best possible - visitor is captivated
+    VisitorState.ENGAGED: (0.75, 0.90),          # Normal, attentive
+    VisitorState.CURIOUS: (0.55, 0.70),           # Asked a question
+    VisitorState.READY_TO_MOVE: (0.50, 0.65),     # Exhibit exhausted
+    VisitorState.BORED_OF_TOPIC: (0.45, 0.60),    # Wants variety in content
+    VisitorState.FATIGUED: (0.40, 0.55),           # Bored, wants variety
+    VisitorState.OVERLOADED: (0.30, 0.45),         # Too many facts
+    VisitorState.CONFUSED: (0.20, 0.35),           # Needs clarification
+    VisitorState.DISENGAGED: (0.05, 0.15),         # Visitor has given up
 }
 
 # State-specific prompts for LLM utterance generation
@@ -280,8 +280,8 @@ class StateMachineSimulator:
     # Thresholds (literature-grounded, lowered to prevent ExplainNewFact spam)
     OVERLOAD_THRESHOLD = 3      # Consecutive ExplainNewFact before OVERLOADED
     FATIGUE_THRESHOLD = 3       # Turns without AskQuestion before FATIGUED
-    CURIOUS_PROBABILITY = 0.15  # Was 0.30 - lowered to reduce random CURIOUS triggers
-    CONFUSED_PROBABILITY = 0.10 # Was 0.20 - lowered to reduce random punishment
+    CURIOUS_PROBABILITY = 0.30  # Thesis Table 7: 30% random from ENGAGED
+    CONFUSED_PROBABILITY = 0.20 # Thesis Table 7: 20% random + deflection
     READY_COVERAGE = 0.80       # 80% coverage before READY_TO_MOVE
     READY_TURNS = 4             # Minimum turns at exhibit before READY_TO_MOVE
     

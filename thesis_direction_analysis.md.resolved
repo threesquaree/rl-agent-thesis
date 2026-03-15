@@ -1,0 +1,176 @@
+# Thesis Direction Analysis & Suggestions
+
+## Context
+
+Your original proposal focused on **bipolar reward reformulation** — redesigning the non-negative reward signal to produce genuine positive and negative values. After your conversation with Daniel, the scope has shifted toward a more balanced, three-pronged approach:
+
+1. **Simple reward penalty + broadened novelty** (scaled-down version of original proposal)
+2. **Simulator improvement** (new main direction)
+3. **Multi-feature gaze representations** (exploratory comparison)
+
+Below is my analysis of this revised direction, grounded in your proposal, Daniel's thesis, and the codebase.
+
+---
+
+## Assessment: This is a Stronger Thesis Direction
+
+> [!TIP]
+> The revised scope is more defensible, more novel, and more likely to produce meaningful results than the original reward-only focus.
+
+### Why the pivot makes sense
+
+Your original proposal was deeply focused on a single hypothesis: *bipolar reward signals are necessary for effective policy learning*. This is a clean theoretical contribution but carries a significant risk — Daniel's own experiments already showed that **reward engineering alone doesn't close the 43.2 pp gap** (H2 results). His thesis explicitly concludes:
+
+> *"Reward augmentation fails not because rewards are wrong, but because the architecture cannot leverage them effectively."*
+> — Daniel's thesis, §9.3
+
+Building an entire thesis around a more sophisticated version of something Daniel already tried (and showed has limits) is risky. The revised direction acknowledges this and shifts focus to the bottleneck Daniel himself identified as most impactful: **simulator signal quality** (§9.4).
+
+---
+
+## Pillar-by-Pillar Analysis
+
+### Pillar 1: Reward Penalty + Broadened Novelty ✅
+
+**What you proposed**: Centred engagement reward + broadened novelty reward.
+
+**What I suggest**: Keep this, but **scope it down to a supporting contribution**, not the main thesis. Specifically:
+
+| Component | Include? | Rationale |
+|---|---|---|
+| Centred engagement reward (Eq. 3) | ✅ Yes | Simple, principled, policy-invariant. Easy to implement and test. |
+| Threshold-based engagement (Eq. 4) | ❌ Drop | Adds complexity without clear advantage over centred version. The w⁺ ≠ w⁻ case breaks policy invariance and creates a tuning burden. |
+| Broadened novelty (Eq. 5) | ✅ Yes | Directly addresses Pathology 2 (ExplainNewFact dominance). The staleness penalty is well-motivated. |
+| Policy-invariance analysis (§7, RQ4) | ⚠️ Simplify | Keep as a paragraph in your methodology, not an entire research question. The theoretical analysis is correct but not novel enough to be a standalone contribution. |
+
+**Net effect**: One chapter with a clean experiment showing whether centred engagement + broadened novelty improve OCI and coverage. This gives you a concrete comparison baseline for Pillar 2.
+
+---
+
+### Pillar 2: Simulator Improvement (Main Direction) ✅✅
+
+**This is where the thesis contribution should live.** Daniel's thesis is surprisingly clear about this:
+
+> *"Signal quality fundamentally determines what behaviors agents can learn, not just how fast they learn."*
+> — Daniel's thesis, §9.4
+
+The current State Machine simulator, while better than Sim8, has significant limitations that I identified from reading the code:
+
+#### Current State Machine Limitations
+
+1. **Overlapping dwell ranges despite claiming non-overlapping**: Looking at the actual code, CONFUSED (0.30–0.45) and OVERLOADED (0.30–0.45) have *identical* ranges. FATIGUED (0.40–0.55), READY_TO_MOVE (0.40–0.55), and BORED_OF_TOPIC (0.45–0.60) also significantly overlap. The thesis claims "non-overlapping" but the implementation tells a different story — the ranges were later adjusted in code with comments like `# Lowered from (0.75, 0.90) for more realistic baseline`. This means the agent faces the same credit assignment ambiguity Daniel attributed to Sim8 alone.
+
+2. **Binary transition logic**: States transition deterministically based on simple action counters (e.g., 3+ consecutive ExplainNewFact → OVERLOADED). Real engagement doesn't work this way — it's gradual, cumulative, and context-dependent.
+
+3. **No visitor memory across exhibits**: The simulator resets conversation-level counters when transitioning exhibits. A visitor who was overwhelmed at Exhibit 1 starts fresh at Exhibit 2 — unrealistic.
+
+4. **No persona-grounded engagement dynamics**: The three persona profiles (Explorer, Focused, Impatient) only modulate thresholds. They don't alter the fundamental state machine structure, transition probabilities, or dwell distributions. A real "curious expert" vs. "casual browser" would have fundamentally different engagement trajectories.
+
+5. **Recovery is too mechanical**: Recovery rates are hard-coded (e.g., ClarifyFact recovers CONFUSED at 90%). The agent cannot learn *how well* it's recovering — only that recovery either succeeds or fails.
+
+6. **Single-modality engagement**: Only dwell time is used. The simulator generates gaze features (saccade, entropy, etc.) but these are derived from dwell time, not independently modelled.
+
+7. **No temporal dynamics**: Engagement doesn't naturally drift. The visitor stays ENGAGED forever unless specific action-count thresholds are triggered.
+
+#### Suggested Simulator Improvements — Ordered by Impact
+
+| Priority | Improvement | Why |
+|---|---|---|
+| **High** | Fix dwell range overlaps: restore non-overlapping ranges, make each state distinguishable | This directly addresses the credit assignment problem. The agent *cannot* learn engagement-adaptive behaviour when CONFUSED, OVERLOADED, FATIGUED all produce similar dwell values. |
+| **High** | Add gradual engagement drift: engagement naturally decays over time unless reinforced by good agent actions | More realistic than binary threshold triggers. Enables the agent to learn proactive engagement maintenance. |
+| **High** | Introduce partial/probabilistic state transitions instead of deterministic counter-based triggers | Replace "3+ ExplainNewFact → OVERLOADED" with a probability that increases with consecutive explains. More realistic and creates a richer learning signal. |
+| **Medium** | Cross-exhibit visitor memory: carry engagement state, fatigue, and satisfaction across exhibits | Enables the agent to learn pacing strategies across the full conversation, not just per-exhibit. |
+| **Medium** | Persona-specific engagement trajectories (not just threshold changes) | Different personas should have different state machines or transition graphs, not just different threshold values. |
+| **Medium** | Richer recovery model: partial recovery with quality signals | Instead of binary success/failure, recovery should be graduated — "mostly recovered" vs "fully recovered". |
+| **Low** | Time-dependent engagement: model attention as a resource that depletes and partially recovers | Captures museum fatigue — visitors lose focus over a 30-minute conversation regardless of content quality. |
+
+> [!IMPORTANT]
+> **The key research contribution here**: You can systematically vary simulator features and measure which ones most affect agent learning. This is a *controlled experiment on simulator design*, which is a genuinely novel contribution that neither Daniel nor the broader dialogue RL literature has properly done.
+
+#### Suggested Experimental Design for Pillar 2
+
+Create a **simulator improvement ladder**:
+
+1. **Baseline**: Current State Machine (as-is)
+2. **SM-v2**: Fix dwell overlaps + add gradual drift
+3. **SM-v3**: SM-v2 + probabilistic transitions + cross-exhibit memory
+4. **SM-v4**: SM-v3 + persona-specific trajectories
+
+Train the flat Actor-Critic on each, measuring:
+- Coverage, OCI, policy entropy (inherited from Daniel)
+- Recovery action usage rate
+- Engagement correlation (dwell–action Spearman ρ)
+- Behavioural diversity (proportion of unique action sequences)
+
+This gives you a clean story: *"Simulator fidelity improvements produce more engagement-adaptive agent policies."*
+
+---
+
+### Pillar 3: Multi-Feature Gaze Representations ✅
+
+Daniel explicitly called this out:
+
+> *"Future work should explore multi-feature gaze representations that combine multiple eye-tracking metrics for richer engagement estimation."*
+> — Daniel's thesis, §10
+
+The current code generates 6 gaze features (DwellTime, SaccadeSpan, TurnGazeEntropy, TurnFixChangeRate, DominantObjectRatio, GazeEntryLatency) but only DwellTime is used as the engagement signal. This is a missed opportunity.
+
+#### Suggested Approach
+
+1. **Feature comparison study**: Use each gaze feature individually as the engagement signal and compare agent learning. Which feature produces the best learning signal?
+
+2. **Feature combination**: Test whether combining features (e.g., weighted average, or a learned combination) outperforms any single feature.
+
+3. **Feature importance analysis**: Use techniques like permutation importance or SHAP on the learned policy to determine which gaze features the agent actually uses.
+
+> [!NOTE]
+> **Scoping note**: The simulator currently derives all gaze features from dwell time (they're not independently generated). For this pillar to be meaningful, you'll need to modify the simulator to generate gaze features that carry independent information — otherwise you're just testing transformations of the same signal.
+
+This is a good **complementary study** but probably not enough for a standalone contribution. Pair it with Pillar 2: as you improve the simulator, also improve the gaze feature generation.
+
+---
+
+## Revised Research Questions
+
+Here's how I'd restructure the research questions for the revised scope:
+
+| RQ | Question | Maps to |
+|---|---|---|
+| **RQ1** | How does the fidelity of the visitor simulator affect the emergence of engagement-adaptive dialogue policies? | Pillar 2 (main) |
+| **RQ2** | Do bipolar reward signals (centred engagement + broadened novelty) improve policy diversity and coverage compared to the non-negative baseline? | Pillar 1 (supporting) |
+| **RQ3** | Which gaze features, individually and in combination, provide the most informative engagement signal for RL policy learning? | Pillar 3 (exploratory) |
+
+---
+
+## Revised Timeline Suggestion (17 weeks)
+
+| Phase | Tasks | Duration |
+|---|---|---|
+| Literature review | Simulator design literature, gaze feature literature, updated reward shaping | 2 weeks |
+| Simulator analysis | Document current SM limitations, design improvement ladder | 1 week |
+| Implementation | SM-v2 through SM-v4, reward changes, multi-feature gaze | 4 weeks |
+| Experiments | Simulator ladder × reward conditions, gaze feature comparison | 3 weeks |
+| Analysis & writing | Results, discussion, thesis draft | 5 weeks |
+| Revision & submission | Supervisor feedback, final version | 2 weeks |
+
+---
+
+## Key Risks & Mitigations
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Simulator improvements don't change agent behaviour | High | Start with the dwell-range fix — this is almost guaranteed to have an effect since the current ranges overlap for 5/9 states |
+| Too many variables to test (simulator × reward × gaze) | Medium | Prioritise simulator improvements; use reward and gaze as secondary axes |
+| Multi-feature gaze is meaningless if features are derived from dwell | Medium | Redesign gaze feature generation *first*, before running comparison experiments |
+| Scope creep: 3 pillars is ambitious for a master's thesis | Medium | Pillar 2 is the thesis. Pillars 1 and 3 are supporting contributions that strengthen the story. |
+
+---
+
+## Summary Recommendation
+
+> [!IMPORTANT]
+> **The revised direction is better than the original.** The shift from "reward function is the problem" to "simulator quality is the bottleneck" is well-supported by Daniel's own evidence. The three-pillar structure gives you depth (Pillar 2) with breadth (Pillars 1, 3), and every pillar produces concrete, measurable results.
+>
+> The original proposal risked building elaborate reward mathematics only to find that the simulator can't provide the signal quality needed to test them — exactly the problem Daniel ran into. The revised direction attacks the simulator first, then uses reward improvements and gaze features to amplify whatever gains the simulator improvements produce.
+
+My one strong suggestion: **Make the dwell-range overlap fix your first implementation task.** It's a concrete bug/limitation in the current code, it directly undermines the "non-overlapping signals" claim in Daniel's thesis, and fixing it will give you immediate experimental results to validate the approach.

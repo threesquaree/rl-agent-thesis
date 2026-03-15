@@ -154,8 +154,24 @@ Examples:
     
     parser.add_argument('--w-engagement', type=float, default=1.0,
                        help='Engagement reward weight: r^eng_t = dwell_t × w_engagement (default: 1.0)')
+    parser.add_argument('--centred-engagement', action='store_true',
+                       help='Use centred engagement reward: r^ceng_t = w_e * (dwell_t - EMA(dwell)) (thesis Eq. 2). Reduces bias from visitor baseline dwell differences.')
+    parser.add_argument('--dwell-ema-alpha', type=float, default=0.1,
+                       help='EMA decay factor for centred engagement baseline (default: 0.1, effective memory ~10 steps)')
     parser.add_argument('--novelty-per-fact', type=float, default=1.0,
                        help='Novelty reward scale: r^nov_t = novelty_per_fact × |new_facts| (default: 1.0)')
+    parser.add_argument('--broadened-novelty', action='store_true',
+                       help='Use broadened novelty reward (thesis Eq. 5). Replaces standard novelty with multi-action credit: ExplainNewFact + RepeatFact + ClarifyFact + AskQuestion - staleness.')
+    parser.add_argument('--alpha-new', type=float, default=1.0,
+                       help='Broadened novelty: reward for ExplainNewFact with new facts (default: 1.0)')
+    parser.add_argument('--alpha-rep', type=float, default=0.3,
+                       help='Broadened novelty: reward for RepeatFact (default: 0.3)')
+    parser.add_argument('--alpha-clar', type=float, default=0.3,
+                       help='Broadened novelty: reward for ClarifyFact (default: 0.3)')
+    parser.add_argument('--alpha-ask', type=float, default=0.2,
+                       help='Broadened novelty: reward for AskOpinion/AskMemory/AskClarification (default: 0.2)')
+    parser.add_argument('--alpha-stale', type=float, default=0.5,
+                       help='Broadened novelty: staleness penalty at exhausted exhibit for non-Explain actions (default: 0.5)')
     parser.add_argument('--w-responsiveness', type=float, default=0.5,
                        help='Responsiveness reward: +w_responsiveness (answer) / -0.6*w_responsiveness (deflect) (default: 0.5, increased for H2)')
     parser.add_argument('--w-conclude', type=float, default=0.4,
@@ -258,7 +274,11 @@ Examples:
                        help='Verbose output mode')
     
     args = parser.parse_args()
-    
+
+    # Warn if broadened novelty conflicts with novelty-per-fact
+    if args.broadened_novelty and args.novelty_per_fact != 1.0:
+        print("WARNING: --broadened-novelty is active; --novelty-per-fact is ignored (use --alpha-new instead)")
+
     # Handle variant selection - override mode and name if variant is specified
     # Note: Use --reward_mode to switch between baseline/augmented rewards
     variant_configs = {
@@ -397,7 +417,15 @@ Examples:
         "reward_parameters": {
             "reward_mode": args.reward_mode,
             "w_engagement": args.w_engagement,
+            "centred_engagement": args.centred_engagement,
+            "dwell_ema_alpha": args.dwell_ema_alpha,
             "novelty_per_fact": args.novelty_per_fact,
+            "broadened_novelty": args.broadened_novelty,
+            "alpha_new": args.alpha_new,
+            "alpha_rep": args.alpha_rep,
+            "alpha_clar": args.alpha_clar,
+            "alpha_ask": args.alpha_ask,
+            "alpha_stale": args.alpha_stale,
             "w_responsiveness": args.w_responsiveness,
             "w_conclude": args.w_conclude
         },
@@ -435,8 +463,14 @@ Examples:
         print("REWARD FUNCTION (BASELINE - engagement + novelty ONLY):")
     else:
         print("REWARD FUNCTION (AUGMENTED - includes all components):")
-    print(f"  Engagement:         r^eng_t = dwell_t × {args.w_engagement:.2f}")
-    print(f"  Novelty:            r^nov_t = {args.novelty_per_fact:.2f} × |new_facts|")
+    if args.centred_engagement:
+        print(f"  Engagement:         r^ceng_t = {args.w_engagement:.2f} * (dwell_t - EMA(dwell))  [CENTRED, alpha={args.dwell_ema_alpha}]")
+    else:
+        print(f"  Engagement:         r^eng_t = dwell_t × {args.w_engagement:.2f}  [STANDARD]")
+    if args.broadened_novelty:
+        print(f"  Novelty:            BROADENED (Eq. 5): α_new={args.alpha_new}, α_rep={args.alpha_rep}, α_clar={args.alpha_clar}, α_ask={args.alpha_ask}, α_stale={args.alpha_stale}")
+    else:
+        print(f"  Novelty:            r^nov_t = {args.novelty_per_fact:.2f} × |new_facts|  [STANDARD]")
     print(f"  Responsiveness:     +{args.w_responsiveness:.2f} (answer) / -{args.w_responsiveness*0.6:.2f} (deflect)")
     print(f"  Conclude:           {args.w_conclude:.2f} × |exhibits_covered|")
     print("  Transition:         -0.20 (0 facts) / -0.16 (1 fact)")
@@ -460,7 +494,17 @@ Examples:
     os.environ["HRL_NOVELTY_PER_FACT"] = str(args.novelty_per_fact)
     os.environ["HRL_W_RESPONSIVENESS"] = str(args.w_responsiveness)
     os.environ["HRL_W_CONCLUDE"] = str(args.w_conclude)
-    
+    os.environ["HRL_CENTRED_ENGAGEMENT"] = "1" if args.centred_engagement else "0"
+    os.environ["HRL_DWELL_EMA_ALPHA"] = str(args.dwell_ema_alpha)
+
+    # Broadened novelty reward (thesis Eq. 5)
+    os.environ["HRL_BROADENED_NOVELTY"] = "1" if args.broadened_novelty else "0"
+    os.environ["HRL_ALPHA_NEW"] = str(args.alpha_new)
+    os.environ["HRL_ALPHA_REP"] = str(args.alpha_rep)
+    os.environ["HRL_ALPHA_CLAR"] = str(args.alpha_clar)
+    os.environ["HRL_ALPHA_ASK"] = str(args.alpha_ask)
+    os.environ["HRL_ALPHA_STALE"] = str(args.alpha_stale)
+
     # H1 Advanced: Pass diversity reward coefficient
     os.environ["HRL_DIVERSITY_REWARD_COEF"] = str(args.diversity_reward_coef)
     

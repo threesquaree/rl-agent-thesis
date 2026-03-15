@@ -80,3 +80,6 @@ htmlcov/
 # Tensorboard
 runs/
 events.out.tfevents.*
+
+# Claude Code
+.claude/

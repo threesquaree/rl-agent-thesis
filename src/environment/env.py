@@ -50,7 +50,7 @@ class MuseumDialogueEnv(gym.Env):
     Reward: Engagement (dwell) + Novelty (coverage) + deliberation cost
     """
     
-    def __init__(self, deliberation_cost=0.01, knowledge_graph_path=None, max_turns=20, 
+    def __init__(self, deliberation_cost=0.0, knowledge_graph_path=None, max_turns=20, 
                  options_override=None, subactions_override=None):
         super().__init__()
         
@@ -68,10 +68,24 @@ class MuseumDialogueEnv(gym.Env):
         
         # Engagement: r^eng_t = dwell_t × w_engagement (paper.tex default: 1.0)
         self.w_engagement = float(os.environ.get("HRL_W_ENGAGEMENT", "1.0"))
+
+        # Centred engagement reward (thesis Section 5.1): r^ceng_t = w_e * (dwell_t - d_bar_t)
+        # Enabled via HRL_CENTRED_ENGAGEMENT=1; EMA decay alpha via HRL_DWELL_EMA_ALPHA (default 0.1)
+        self.centred_engagement = os.environ.get("HRL_CENTRED_ENGAGEMENT", "0") == "1"
+        self.dwell_ema_alpha = float(os.environ.get("HRL_DWELL_EMA_ALPHA", "0.1"))
+        self._dwell_ema = 0.5  # Running EMA of dwell; initialised at neutral midpoint
         
         # Novelty: r^nov_t = novelty_per_fact × |new_facts| (paper.tex default: 1.0)
         self.novelty_per_fact = float(os.environ.get("HRL_NOVELTY_PER_FACT", "1.0"))
-        
+
+        # Broadened novelty reward (thesis Eq. 5): replaces standard novelty when enabled
+        self.broadened_novelty = os.environ.get("HRL_BROADENED_NOVELTY", "0") == "1"
+        self.alpha_new = float(os.environ.get("HRL_ALPHA_NEW", "1.0"))
+        self.alpha_rep = float(os.environ.get("HRL_ALPHA_REP", "0.3"))
+        self.alpha_clar = float(os.environ.get("HRL_ALPHA_CLAR", "0.3"))
+        self.alpha_ask = float(os.environ.get("HRL_ALPHA_ASK", "0.2"))
+        self.alpha_stale = float(os.environ.get("HRL_ALPHA_STALE", "0.5"))
+
         # === AUGMENTED REWARD COMPONENTS (only used when reward_mode="augmented") ===
         # Responsiveness: +w_responsiveness (answer) / -0.6*w_responsiveness (deflect)
         self.w_responsiveness = float(os.environ.get("HRL_W_RESPONSIVENESS", "0.5"))
@@ -189,6 +203,7 @@ class MuseumDialogueEnv(gym.Env):
         self.dwell = 0.0  # Current dwell time (engagement signal)
         self.last_user_utterance = ""
         self._previous_dwell = 0.0  # Store previous dwell for lagged rewards
+        self._dwell_ema = 0.5  # Reset EMA to neutral midpoint at episode start
         self._last_user_intent = "statement"  # Track user intent for responsiveness
         self._last_user_response_type = "statement"  # Track simulator's response type (question, confusion, etc.)
         self._last_visitor_state = None  # Track visitor state for agent template responsiveness
@@ -222,6 +237,12 @@ class MuseumDialogueEnv(gym.Env):
         # Component contribution tracking (for analysis)
         self.engagement_sum = 0.0
         self.novelty_sum = 0.0
+        # Broadened novelty sub-component tracking
+        self.bnov_new_sum = 0.0
+        self.bnov_rep_sum = 0.0
+        self.bnov_clar_sum = 0.0
+        self.bnov_ask_sum = 0.0
+        self.bnov_stale_sum = 0.0
         self.responsiveness_sum = 0.0
         self.conclude_sum = 0.0
         self.transition_sum = 0.0
@@ -515,22 +536,64 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         # ===== REWARD CALCULATION (per paper.tex Section 4.7, lines 681-709) =====
         # Simplified reward function with configurable weights
         
-        # Engagement: r^eng_t = dwell_t × w_engagement (paper.tex line 681)
+        # Engagement reward (per paper.tex line 681 / thesis Section 5.1)
         # SMDP Coverage Fix: Zero engagement at exhausted exhibits if flag is set
         explain_subactions = ["ExplainNewFact", "ClarifyFact", "RepeatFact"]
         if self.zero_engagement_exhausted and exhibit_exhausted_initial and subaction in explain_subactions:
             engagement_reward = 0.0  # No engagement reward at exhausted exhibits
             if verbose:
                 print(f"🚫 ZERO ENGAGEMENT: engagement=0 (Explain at exhausted exhibit)")
+        elif self.centred_engagement:
+            # Centred engagement (thesis Eq. 2): r^ceng_t = w_e * (dwell_t - d_bar_t)
+            # Update EMA before computing reward so the baseline reflects prior history
+            self._dwell_ema = (1 - self.dwell_ema_alpha) * self._dwell_ema + self.dwell_ema_alpha * self.dwell
+            engagement_reward = self.w_engagement * (self.dwell - self._dwell_ema)
+            if verbose:
+                print(f"📊 CENTRED ENGAGEMENT: {engagement_reward:.3f} (dwell={self.dwell:.3f}, ema={self._dwell_ema:.3f})")
         else:
             engagement_reward = max(0.0, self.dwell) * self.w_engagement
         
-        # Novelty: r^nov_t = novelty_per_fact × |new_facts| (no scaling by coverage - paper.tex line 681)
-        novelty_reward = len(new_fact_ids) * self.novelty_per_fact
-        
-        # Diagnostic logging for novelty reward (if verbose)
-        if verbose and len(new_fact_ids) > 0:
-            print(f"📚 NOVELTY REWARD: +{novelty_reward:.3f} ({len(new_fact_ids)} new fact(s): {new_fact_ids[:3]})")
+        # Novelty reward computation
+        # Initialize broadened novelty locals (needed for info dict regardless of branch)
+        bnov_new = 0.0
+        bnov_rep = 0.0
+        bnov_clar = 0.0
+        bnov_ask = 0.0
+        bnov_stale = 0.0
+
+        if self.broadened_novelty:
+            # Broadened novelty (thesis Eq. 5): rewards multiple content-advancing actions
+            bnov_new = self.alpha_new if subaction == "ExplainNewFact" and len(new_fact_ids) > 0 else 0.0
+            bnov_rep = self.alpha_rep if subaction == "RepeatFact" else 0.0
+            bnov_clar = self.alpha_clar if subaction == "ClarifyFact" else 0.0
+            bnov_ask = self.alpha_ask if subaction in ("AskOpinion", "AskMemory", "AskClarification") else 0.0
+            # Staleness: penalty for being at exhausted exhibit (non-Explain actions only,
+            # since Explain at exhausted is already penalized by exhaustion_penalty)
+            bnov_stale = -self.alpha_stale if (exhibit_exhausted_initial and subaction not in explain_subactions) else 0.0
+
+            novelty_reward = bnov_new + bnov_rep + bnov_clar + bnov_ask + bnov_stale
+
+            if verbose:
+                components = []
+                if bnov_new > 0: components.append(f"new={bnov_new:.2f}")
+                if bnov_rep > 0: components.append(f"rep={bnov_rep:.2f}")
+                if bnov_clar > 0: components.append(f"clar={bnov_clar:.2f}")
+                if bnov_ask > 0: components.append(f"ask={bnov_ask:.2f}")
+                if bnov_stale < 0: components.append(f"stale={bnov_stale:.2f}")
+                if components:
+                    print(f"📚 BROADENED NOVELTY: {novelty_reward:.3f} ({', '.join(components)})")
+
+            # Track sub-components
+            self.bnov_new_sum += bnov_new
+            self.bnov_rep_sum += bnov_rep
+            self.bnov_clar_sum += bnov_clar
+            self.bnov_ask_sum += bnov_ask
+            self.bnov_stale_sum += bnov_stale
+        else:
+            # Standard novelty: r^nov_t = novelty_per_fact × |new_facts| (paper.tex line 681)
+            novelty_reward = len(new_fact_ids) * self.novelty_per_fact
+            if verbose and len(new_fact_ids) > 0:
+                print(f"📚 NOVELTY REWARD: +{novelty_reward:.3f} ({len(new_fact_ids)} new fact(s): {new_fact_ids[:3]})")
         
         # ===== EXHAUSTION PENALTY (H6 fix) =====
         # Penalize ANY Explain subaction on exhausted exhibits to create gradient toward transitions
@@ -718,6 +781,12 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
             "terminated_option": terminate_option,
             "reward_engagement": engagement_reward,
             "reward_novelty": novelty_reward,
+            "reward_bnov_new": bnov_new,
+            "reward_bnov_rep": bnov_rep,
+            "reward_bnov_clar": bnov_clar,
+            "reward_bnov_ask": bnov_ask,
+            "reward_bnov_stale": bnov_stale,
+            "broadened_novelty_active": self.broadened_novelty,
             "reward_responsiveness": responsiveness_reward,
             "reward_conclude": conclude_bonus,
             "reward_transition_insufficiency": transition_insufficiency_penalty,
@@ -755,6 +824,11 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
                 'total_reward': self.session_reward,
                 'engagement_contribution': self.engagement_sum,
                 'novelty_contribution': self.novelty_sum,
+                'bnov_new_contribution': self.bnov_new_sum,
+                'bnov_rep_contribution': self.bnov_rep_sum,
+                'bnov_clar_contribution': self.bnov_clar_sum,
+                'bnov_ask_contribution': self.bnov_ask_sum,
+                'bnov_stale_contribution': self.bnov_stale_sum,
                 'responsiveness_contribution': self.responsiveness_sum,
                 'conclude_contribution': self.conclude_sum,
                 'transition_contribution': self.transition_sum,

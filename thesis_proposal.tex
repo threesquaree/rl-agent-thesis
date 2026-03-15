@@ -1,0 +1,542 @@
+\documentclass[12pt,a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{natbib}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{tocloft}
+\usepackage{titlesec}
+\usepackage{setspace}
+\usepackage{array}
+\usepackage{longtable}
+
+\geometry{margin=2.5cm}
+\onehalfspacing
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    citecolor=blue!60!black,
+    urlcolor=blue!60!black
+}
+
+% ── Custom commands ───────────────────────────────────────
+\newcommand{\reng}{r^{\mathrm{eng}}_t}
+\newcommand{\rnov}{r^{\mathrm{nov}}_t}
+\newcommand{\rceng}{r^{\mathrm{ceng}}_t}
+\newcommand{\rteng}{r^{\mathrm{teng}}_t}
+\newcommand{\rbnov}{r^{\mathrm{bnov}}_t}
+\newcommand{\Rbip}{R^{\mathrm{bip}}_t}
+\newcommand{\Fused}{F_{\mathrm{used}}}
+
+% ── Title ─────────────────────────────────────────────────
+\title{%
+    \textbf{Bipolar Reward Function Design for Reinforcement-Learning-Based Museum Dialogue Agents} \\[6pt]
+    \large Using Continuous Engagement Signals \\[12pt]
+    \normalsize Master's Thesis Proposal \\
+    University of Twente
+}
+\author{
+    Nayan [Surname] \\
+    \textit{Supervisors:} [Supervisor Name(s)] \\
+    \textit{Programme:} [Programme Name]
+}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+\newpage
+
+\tableofcontents
+\newpage
+
+% ══════════════════════════════════════════════════════════
+\section{Introduction and Motivation}
+\label{sec:intro}
+% ══════════════════════════════════════════════════════════
+
+Museum conversational agents face a fundamental tension: they must deliver factual content about exhibits in a coherent, educational sequence, while simultaneously adapting their dialogue strategy in real time to the engagement state of the visitor standing in front of them. A visitor who is losing interest needs a different conversational approach than one who is deeply engaged---yet the agent must still ensure that the educational content is communicated.
+
+\textbf{Reinforcement learning} (RL) provides a principled framework for learning such adaptive policies (see \Cref{sec:glossary} for a primer on RL terminology used throughout this proposal). Rather than relying on exhaustive hand-crafted dialogue rules, an RL agent optimises a long-horizon objective directly from interaction signals: it learns, through trial and error, which dialogue actions lead to the best outcomes over the course of an entire conversation.
+
+A recent master's thesis by \citet{bourdon2025} implemented and evaluated an RL-based museum guide agent for a Dutch Golden Age portrait gallery containing 21 facts distributed across multiple exhibits. That work made a significant contribution by integrating \emph{gaze-derived dwell time}---the proportion of time a visitor spends looking at the exhibit during a dialogue turn---as a continuous, real-time proxy for visitor engagement. Bourdon systematically compared two policy architectures across 53 experimental conditions:
+\begin{itemize}[nosep]
+    \item \textbf{Flat Actor-Critic (MDP)}: the agent selects one of nine primitive dialogue actions directly at each turn.
+    \item \textbf{Hierarchical Option-Critic (SMDP)}: the agent first selects a high-level \emph{option} (e.g., ``Explain'', ``Ask Question''), which then governs a sequence of primitive actions until a learned \emph{termination condition} is met.
+\end{itemize}
+The main empirical finding was striking: flat policies achieved 98.7\% exhibit coverage (the percentage of facts successfully communicated to the visitor), while the best-optimised hierarchical configuration reached only 55.5\%---a gap of 43.2 percentage points that persisted across hyperparameter tuning, reward engineering, simulator variation, state representation changes, and option design modifications.
+
+However, Bourdon also identified a set of \emph{reward function problems} that were acknowledged but not resolved. The baseline reward function used throughout that work was:
+\begin{equation}
+\label{eq:baseline}
+R_t \;=\; \underbrace{w_e \cdot \mathrm{dwell}_t}_{\reng} \;+\; \underbrace{\alpha_{\mathrm{nov}} \cdot \bigl(|\Fused(t)| - |\Fused(t-1)|\bigr)}_{\rnov},
+\end{equation}
+where $\mathrm{dwell}_t \in [0,1]$ is the gaze-derived engagement signal, $\Fused(t)$ is the set of facts communicated by turn $t$, $w_e = 1.0$ is the engagement weight, and $\alpha_{\mathrm{nov}} = 1.0$ is the novelty scale factor.
+
+This reward is \textbf{strictly non-negative} for all reachable states. The engagement component satisfies $\reng \geq 0$ because dwell time cannot be negative. The novelty component satisfies $\rnov \geq 0$ because the number of facts communicated can only increase or stay the same---it never decreases. The agent therefore exists in a \emph{purely positive reward landscape}: low engagement reduces the reward magnitude but never produces a penalty.
+
+This non-negativity has two documented pathological consequences:
+
+\paragraph{Pathology 1: Asymmetric engagement reward.}
+Because $\reng \in [0, w_e]$, the agent receives no gradient signal that distinguishes an actively disengaged visitor (dwell near zero) from a moderately engaged one (dwell near 0.5). The reward difference between these states is merely a smaller positive number, not a negative signal. In practical terms, the agent is never \emph{penalised} for losing the visitor's attention---it is simply rewarded less.
+
+\paragraph{Pathology 2: Structural novelty bias.}
+The novelty reward $\rnov > 0$ if and only if at least one new fact was introduced at turn $t$. Since only the \texttt{ExplainNewFact} subaction can introduce new facts, it is the \emph{unique} action for which $\rnov > 0$. All other actions (e.g., \texttt{RepeatFact}, \texttt{ClarifyFact}, \texttt{AskOpinion}) receive $\rnov = 0$. Combined with the fact that the engagement reward is also non-negative, the cumulative advantage of the \texttt{Explain} option accumulates without bound, suppressing the termination gradient in Option-Critic. This produces \textbf{option collapse}: across all baseline seeds, \citet{bourdon2025} observed an Option Collapse Index (OCI) of 87.4--90.0, meaning the agent selected the Explain option in over 87\% of episodes to the near-exclusion of all others.
+
+These two structural flaws constitute the principal motivation for this thesis. The central claim is that the observed pathologies---option collapse, poor coverage under hierarchical architectures, and the failure of augmented reward components to substantially improve hierarchical performance---are at least partially attributable to a reward landscape that provides no genuine negative signal. \textbf{Redesigning the reward function to produce bipolar (positive and negative) signals is, we argue, a necessary precondition for effective RL-based dialogue policy learning in this setting.}
+
+% ══════════════════════════════════════════════════════════
+\section{Key Reinforcement Learning Concepts}
+\label{sec:glossary}
+% ══════════════════════════════════════════════════════════
+
+This section provides concise definitions of the RL concepts and terminology used throughout the proposal. Readers already familiar with RL may skip ahead to \Cref{sec:gap}.
+
+\paragraph{Reinforcement Learning (RL).}
+A learning paradigm in which an \emph{agent} interacts with an \emph{environment} over a sequence of discrete time steps. At each step, the agent observes the current \emph{state}, selects an \emph{action}, receives a scalar \emph{reward}, and transitions to a new state. The agent's goal is to learn a \emph{policy} that maximises the cumulative reward over time.
+
+\paragraph{Markov Decision Process (MDP).}
+The formal mathematical framework for RL, defined by the tuple $\langle \mathcal{S}, \mathcal{A}, \mathcal{P}, R, \gamma \rangle$: a set of states~$\mathcal{S}$, a set of actions~$\mathcal{A}$, a transition probability function~$\mathcal{P}(s' | s, a)$, a reward function~$R(s, a, s')$, and a discount factor~$\gamma \in (0,1)$ that determines how much the agent values immediate versus future rewards.
+
+\paragraph{Semi-Markov Decision Process (SMDP).}
+An extension of the MDP where actions (called \emph{options}) can span multiple time steps. Each option consists of an initiation condition, an internal policy over primitive actions, and a termination condition. The SMDP framework enables hierarchical RL, where a high-level policy selects among options and each option internally selects primitive actions.
+
+\paragraph{Policy ($\pi$).}
+A mapping from states to actions (or a probability distribution over actions) that defines the agent's behaviour. The goal of RL is to find the \emph{optimal policy}~$\pi^*$ that maximises expected cumulative discounted reward.
+
+\paragraph{Reward Function ($R$).}
+A function that assigns a scalar signal to each state--action--next-state transition, encoding what the agent should optimise. Reward function design is the central concern of this thesis: a poorly designed reward can cause the agent to learn unintended behaviours.
+
+\paragraph{Q-Value ($Q(s, a)$).}
+The expected cumulative discounted reward from taking action $a$ in state $s$ and then following the current policy. Intuitively, it represents how ``good'' a particular action is in a particular state. The optimal policy selects, in each state, the action with the highest Q-value.
+
+\paragraph{Discount Factor ($\gamma$).}
+A parameter in $[0, 1)$ that controls the trade-off between immediate and future rewards. A $\gamma$ close to 1 makes the agent far-sighted (it cares about long-term consequences); a $\gamma$ close to 0 makes it myopic (it prioritises immediate reward). In the Bourdon (2025) baseline, $\gamma = 0.80$.
+
+\paragraph{Actor-Critic.}
+A class of RL algorithms that maintains two components: an \emph{actor} (the policy, which selects actions) and a \emph{critic} (the value function, which evaluates how good the current state or state--action pair is). The critic guides the actor's updates, making learning more stable than pure policy-gradient methods. The flat MDP architecture in this thesis uses Actor-Critic.
+
+\paragraph{Option-Critic.}
+An extension of Actor-Critic for hierarchical RL \citep{bacon2017}. The agent learns not only which option to select (the policy over options) and which primitive actions to take within each option (the intra-option policy), but also \emph{when to terminate} each option (the termination function). The SMDP architecture in this thesis uses Option-Critic.
+
+\paragraph{Option Collapse.}
+A failure mode in hierarchical RL where the agent converges to using a single option almost exclusively, effectively reducing the hierarchical policy to a flat one. Measured by the \emph{Option Collapse Index (OCI)}: the percentage of episodes in which more than 80\% of actions come from a single option. In the Bourdon (2025) baseline, OCI reached 87.4--90.0.
+
+\paragraph{Reward Shaping.}
+The practice of adding an auxiliary reward signal $F(s, s')$ to the original reward to guide learning without (ideally) changing the optimal policy. If the shaping function takes the potential-based form $F(s, s') = \gamma \Phi(s') - \Phi(s)$ for some function $\Phi$, then the optimal policy is guaranteed to be unchanged \citep{ng1999}. This is the \emph{policy-invariance condition}.
+
+\paragraph{Potential-Based Reward Shaping (PBRS).}
+A specific form of reward shaping where the auxiliary reward is derived from a \emph{potential function} $\Phi: \mathcal{S} \to \mathbb{R}$. The shaped reward becomes $R'(s, a, s') = R(s, a, s') + \gamma \Phi(s') - \Phi(s)$. The key theoretical result is that PBRS preserves the optimal policy \citep{ng1999}, making it a ``safe'' way to incorporate domain knowledge.
+
+\paragraph{Policy Entropy.}
+A measure of how spread out the agent's action-selection probabilities are. High entropy means the agent distributes probability across many actions (exploratory); low entropy means it concentrates on one or two actions (exploitative or collapsed). Measured in nats using Shannon entropy.
+
+\paragraph{Episodic Return.}
+The cumulative reward $G = \sum_{t=0}^{T} \gamma^t R_t$ collected over one complete episode (one full museum conversation). This is the primary quantity that the RL agent seeks to maximise.
+
+\paragraph{Dwell Time.}
+In this thesis, the proportion of a dialogue turn that the visitor spends looking at the exhibit, measured via gaze tracking. Used as a continuous proxy for visitor engagement ($\mathrm{dwell}_t \in [0, 1]$).
+
+% ══════════════════════════════════════════════════════════
+\section{Research Gap and Contribution}
+\label{sec:gap}
+% ══════════════════════════════════════════════════════════
+
+\subsection{What Bourdon (2025) Left Open}
+
+\citet{bourdon2025} explicitly acknowledged the non-negativity of the baseline reward and tested several mitigation strategies under Hypothesis~H2:
+\begin{itemize}[nosep]
+    \item An \textbf{AggressiveExhaustion} penalty of $-2.0$ for \texttt{Explain} actions at exhausted exhibits, which reduced OCI to 39.7 but produced negative episodic returns ($-4.2 \pm 12.6$) with high variance---indicating instability.
+    \item A \textbf{ZeroEngExhausted} variant that removed the engagement reward at exhausted exhibits, yielding only marginal OCI improvement (66.6 versus the baseline 63.3).
+    \item \textbf{Augmented auxiliary reward components}: a responsiveness bonus ($w_{\mathrm{resp}} = 0.25$ for timely answers to visitor questions), a transition insufficiency penalty ($-0.20$ when transitioning with fewer than 2 facts mentioned), a conclude bonus ($w_{\mathrm{conclude}} = 0.2$ for broader museum coverage at wrap-up), and a question-asking incentive ($w_{\mathrm{ask}} = 0.15$ for proactive question-asking). None of these closed the 43.2 percentage point flat--hierarchical coverage gap.
+\end{itemize}
+Crucially, none of these interventions addressed the \emph{fundamental sign structure} of the engagement reward: dwell time was always cast as a non-negative quantity, so the agent was never penalised for low engagement, only rewarded less for it.
+
+Bourdon noted this as a limitation and identified it as a direction for future work, writing: ``Future work should explore multi-feature gaze representations that combine multiple eye-tracking metrics for richer engagement estimation.'' Additionally, under Hypothesis~H5, Bourdon demonstrated that \emph{reward-aligned option design}---grouping actions by the reward component they produce rather than by communicative function---achieved the largest single improvement in hierarchical performance (OCI reduced from 74.7 to 2.1, coverage improved from 49.5\% to 55.5\%). This result suggests that the coupling between reward structure and policy architecture is critical, and motivates a deeper investigation into the reward function itself.
+
+\subsection{Thesis Contribution}
+
+This thesis takes Bourdon's identified limitation as its primary point of departure. It makes the following contributions:
+
+\begin{enumerate}[nosep]
+    \item \textbf{Formal characterisation of the reward pathologies} in \citet{bourdon2025}, with precise analysis of the sign, range, and incentive structure of each reward component, and a theoretical account of how non-negativity contributes to option collapse.
+
+    \item \textbf{A family of bipolar reward reformulations}, including:
+    \begin{enumerate}[nosep,label=(\alph*)]
+        \item a \emph{centred engagement reward} that subtracts a running-mean baseline to produce negative signals for below-average dwell;
+        \item a \emph{threshold-based engagement reward} that partitions the dwell signal around a fixed threshold;
+        \item a \emph{potential-based engagement shaping term} analysed against the policy-invariance conditions of \citet{ng1999} and \citet{devlin2012}; and
+        \item a \emph{broadened novelty reward} that distributes credit across all content-advancing actions (not only \texttt{ExplainNewFact}), with a staleness penalty for remaining at exhausted exhibits.
+    \end{enumerate}
+
+    \item \textbf{Policy-invariance analysis} of each proposed reformulation, identifying which formulations are expressible as potential-based shaping $F(s, s') = \gamma \Phi(s') - \Phi(s)$ and are therefore guaranteed not to alter the optimal policy, and explicitly flagging those that are not.
+
+    \item \textbf{Empirical evaluation} on the Sim8 and State Machine simulators inherited from \citet{bourdon2025}, enabling direct comparison with the baseline and augmented reward conditions across both flat and hierarchical architectures.
+\end{enumerate}
+
+% ══════════════════════════════════════════════════════════
+\section{Background and Related Work}
+\label{sec:related}
+% ══════════════════════════════════════════════════════════
+
+\subsection{Reward Shaping and Policy Invariance}
+
+The theoretical foundation for modifying reward functions without distorting the optimal policy was established by \citet{ng1999}, who proved that an additional shaping reward $F(s, s')$ preserves \emph{policy invariance} if and only if it takes the potential-based form:
+\begin{equation}
+\label{eq:pbrs}
+F(s, s') = \gamma \Phi(s') - \Phi(s),
+\end{equation}
+for some real-valued potential function $\Phi: \mathcal{S} \to \mathbb{R}$. This result is central to this thesis: any proposed reward reformulation must be evaluated against this condition. Formulations that satisfy it are ``safe'' in the sense that the optimal policy under the original reward remains optimal under the shaped reward. Formulations that violate it may induce a different optimal policy and must be justified on empirical rather than theoretical grounds.
+
+\citet{devlin2012} extended this result to \emph{dynamic} potential functions that change during training---for example, a running-mean dwell baseline that updates as the agent gains experience. They proved that policy invariance is preserved under dynamic potential-based shaping, provided the potential function depends only on the state and time, not on the agent's action. This extension is directly relevant to the proposed centred engagement reward (\Cref{sec:centred}): if the baseline $\bar{d}_t$ is constructed as a running mean of observed dwell, the resulting shaping term qualifies as dynamic potential-based shaping and is therefore policy-invariant under the \citet{devlin2012} conditions.
+
+\citet{ibrahim2024} provide a comprehensive taxonomy of reward shaping techniques across the broader RL literature, situating potential-based methods within a landscape that includes curriculum shaping, hindsight rewards, and learned reward models. Their survey is used in this thesis to position the proposed reformulations within the existing literature.
+
+\subsection{Reward Design in Dialogue Systems}
+
+\citet{li2016} proposed a multi-component reward for deep RL dialogue generation combining informativity, coherence, and a forward-looking function that penalises responses foreclosing future conversation. Their work is relevant because it demonstrates that multi-component reward design in dialogue RL is both feasible and empirically necessary to avoid degenerate policies such as generic or repetitive responses---a problem structurally analogous to the \texttt{ExplainNewFact} dominance observed in \citet{bourdon2025}.
+
+\citet{su2016} proposed jointly learning the dialogue policy and reward model via active learning with a Gaussian process, reducing dependence on a hand-crafted reward function and handling noisy feedback signals. While this thesis does not adopt an active learning framework, the \citet{su2016} approach motivates the general concern about reward signal reliability that the proposed bipolar reformulation aims to address.
+
+\subsection{Attention-Based and Continuous-Signal Reward Shaping}
+
+\citet{holmes2025} proposed ARES, a method that uses a transformer's attention mechanism to generate dense shaped rewards from sparse or delayed feedback signals, working fully offline. ARES is relevant because dwell time is itself a sparse and delayed signal: the agent acts at turn $t$ but gaze attention is measured retrospectively over the preceding turn. The ARES framework suggests a principled approach to densifying such signals into per-step shaped rewards, and is identified as a direction for future work beyond this thesis.
+
+\citet{kiruluta2025} present CAGSR--vLLM--MTC, which uses per-layer, per-head cross-attention weights as a self-supervised reward signal for multi-turn dialogue RL. Their reward aggregates attention coverage over conversation history, penalises low-entropy focus (a structural parallel to option collapse), and imposes a history-repetition penalty. This work provides a direct structural precedent for using an attention-derived signal as a bipolar reward in multi-turn dialogue.
+
+\citet{jian2025} demonstrate that a visual-attention-based reward model can guide RL training in vision--language tasks, providing an example of continuous attention signals used directly as reward components. While the setting differs from museum dialogue, the methodological pattern---using a continuous engagement signal as the basis for a reward model---is directly applicable.
+
+\subsection{Intrinsic Motivation and Novelty Reward Design}
+
+The structural failure of the novelty reward in \citet{bourdon2025} is closely related to problems studied in the intrinsic motivation literature. \citet{pathak2017} formalise curiosity as the prediction error of an agent's forward model in a self-supervised feature space. Their framework makes explicit that a well-designed novelty signal should \emph{decrease} as the agent gains experience with a state---a property that the increment-based novelty reward $\rnov$ does not possess. Once all facts about an exhibit have been explained, $\rnov = 0$ for all actions, but the accumulated Q-value advantage of the \texttt{Explain} option persists, suppressing termination.
+
+\citet{ostrovski2017} demonstrate that novelty can be measured more rigorously using neural density models rather than simple count increments, providing a principled basis for a reformulated novelty reward that does not privilege a single action. \citet{burda2018} show that intrinsic (novelty) and extrinsic rewards can be combined without one dominating the other when the intrinsic signal is properly normalised---a result that motivates the normalised, broadened novelty reward proposed in this thesis.
+
+% ══════════════════════════════════════════════════════════
+\section{Problem Formulation}
+\label{sec:problem}
+% ══════════════════════════════════════════════════════════
+
+\subsection{MDP and SMDP Notation}
+
+Following \citet{bourdon2025}, the dialogue agent is formalised as a semi-Markov decision process (SMDP) $\langle \mathcal{S}, \mathcal{A}, \mathcal{O}, \mathcal{P}, R, \gamma \rangle$, where:
+\begin{itemize}[nosep]
+    \item $\mathcal{S}$ is the state space: a 143-dimensional vector comprising engagement features $f_t$, a dialogue history summary $h_t$, an intent embedding $i_t$, and a context embedding $c_t$ (encoded via DialogueBERT);
+    \item $\mathcal{O} = \{\texttt{Explain}, \texttt{AskQuestion}, \texttt{OfferTransition}, \texttt{Conclude}\}$ is the set of four high-level options;
+    \item $\mathcal{A}$ is the set of nine primitive subactions: \texttt{ExplainNewFact}, \texttt{RepeatFact}, \texttt{ClarifyFact}, \texttt{AskOpinion}, \texttt{AskMemory}, \texttt{AskClarification}, \texttt{SuggestMove}, \texttt{WrapUp}, and one additional dialogue management action;
+    \item $\mathcal{P}$ is the (unknown) transition distribution governing how the environment (visitor) responds;
+    \item $R$ is the reward function (the object to be redesigned); and
+    \item $\gamma = 0.80$ is the discount factor.
+\end{itemize}
+
+The flat (MDP) architecture uses the same state space and subaction set but selects primitive actions directly at each turn, without the option layer.
+
+\subsection{Formal Statement of the Reward Pathologies}
+
+\paragraph{Pathology 1: Asymmetric engagement reward.}
+The engagement reward $\reng = w_e \cdot \mathrm{dwell}_t$ satisfies $\reng \in [0, w_e]$ for all $t$. The gradient of the expected return with respect to the policy does not change sign as dwell time decreases: the agent receives a smaller positive reward for low engagement but never a negative signal. Consequently, the agent has no explicit incentive to \emph{avoid} states of low visitor engagement.
+
+\paragraph{Pathology 2: Structural novelty bias.}
+The novelty reward $\rnov = \alpha_{\mathrm{nov}} \cdot (|\Fused(t)| - |\Fused(t-1)|)$ satisfies $\rnov \geq 0$ always, and $\rnov > 0$ if and only if at least one new fact was introduced at turn $t$. Since only \texttt{ExplainNewFact} can introduce new facts, it is the unique action in $\mathcal{A}$ for which $\rnov > 0$. This creates a structural, action-specific advantage that biases the policy towards \texttt{ExplainNewFact} irrespective of visitor engagement or dialogue context.
+
+\paragraph{Combined effect.}
+Since $R_t = \reng + \rnov \geq 0$ for all $t$, the agent is never penalised. The cumulative Q-value advantage of options containing \texttt{ExplainNewFact} (primarily the \texttt{Explain} option) accumulates without negative correction, suppressing the termination gradient in Option-Critic and producing the observed OCI values of 87.4--90.0 in the baseline conditions.
+
+% ══════════════════════════════════════════════════════════
+\section{Proposed Reward Reformulations}
+\label{sec:reforms}
+% ══════════════════════════════════════════════════════════
+
+This thesis proposes and evaluates a family of reward reformulations. Each is presented with its mathematical form, range, sign properties, and an analysis of whether it satisfies the policy-invariance condition.
+
+\subsection{Centred Engagement Reward}
+\label{sec:centred}
+
+The centred engagement reward subtracts a running-mean baseline $\bar{d}_t$ from the current dwell observation, so that below-average engagement produces a \emph{negative} reward:
+\begin{equation}
+\label{eq:centred}
+\rceng = w_e \cdot (\mathrm{dwell}_t - \bar{d}_t),
+\end{equation}
+where $\bar{d}_t = (1 - \alpha)\,\bar{d}_{t-1} + \alpha \cdot \mathrm{dwell}_t$ is an exponential moving average with decay parameter $\alpha \in (0,1)$.
+
+\paragraph{Range and sign.} $\rceng \in [-w_e,\; w_e]$. The signal is positive when the visitor's current dwell exceeds the recent average (attention is increasing) and negative when it falls below the recent average (attention is declining). This directly addresses Pathology~1: the agent now receives a genuine penalty for losing visitor engagement relative to the established baseline.
+
+\paragraph{Policy-invariance analysis.}
+Let $\Phi(s_t) = -w_e \cdot \bar{d}_t$. Then $\rceng = w_e \cdot \mathrm{dwell}_t + \Phi(s_t) \approx w_e \cdot \mathrm{dwell}_t + \gamma\Phi(s_{t+1}) - \Phi(s_t)$ up to the discount approximation. Under the \citet{devlin2012} conditions for dynamic potential functions, this formulation preserves the optimal policy provided $\Phi$ depends only on the state (not the action), which holds here since $\bar{d}_t$ is a function of observed dwell---a state feature. \textbf{This formulation is therefore policy-invariant.}
+
+\subsection{Threshold-Based Engagement Reward}
+
+The threshold-based variant uses a fixed threshold $\tau \in (0,1)$ to determine the sign of the engagement signal:
+\begin{equation}
+\label{eq:threshold}
+\rteng =
+\begin{cases}
+w^+ \cdot (\mathrm{dwell}_t - \tau) & \text{if } \mathrm{dwell}_t \geq \tau, \\
+w^- \cdot (\mathrm{dwell}_t - \tau) & \text{if } \mathrm{dwell}_t < \tau,
+\end{cases}
+\end{equation}
+with $w^+, w^- > 0$ (possibly $w^+ \neq w^-$ to allow asymmetric penalisation).
+
+\paragraph{Range and sign.} $\rteng \in [-w^-\tau,\; w^+(1-\tau)]$; the signal is bipolar around the threshold $\tau$.
+
+\paragraph{Policy-invariance analysis.}
+With $w^+ = w^-$, this reduces to $\rteng = w \cdot (\mathrm{dwell}_t - \tau)$, which is the original engagement reward with a constant offset $-w\tau$. A constant offset is a degenerate potential function ($\Phi(s) = \mathrm{const}$, so $\gamma\Phi(s') - \Phi(s) = (\gamma - 1) \cdot \mathrm{const}$), and the \citet{ng1999} policy-invariance result applies. With $w^+ \neq w^-$, the formulation introduces a state-dependent nonlinearity that is \textbf{not expressible as potential-based shaping} and may alter the optimal policy; this case requires empirical justification.
+
+\subsection{Broadened Novelty Reward}
+
+The broadened novelty reward addresses Pathology~2 by distributing content-delivery credit across all actions that advance visitor understanding, not only \texttt{ExplainNewFact}:
+\begin{equation}
+\label{eq:broadnov}
+\rbnov = \alpha_{\mathrm{new}} \cdot \mathbf{1}[\texttt{ExplainNewFact}]
+    + \alpha_{\mathrm{rep}} \cdot \mathbf{1}[\texttt{RepeatFact}]
+    + \alpha_{\mathrm{clar}} \cdot \mathbf{1}[\texttt{ClarifyFact}]
+    + \alpha_{\mathrm{ask}} \cdot \mathbf{1}[\texttt{AskOpinion} \lor \texttt{AskMe}]
+    - \alpha_{\mathrm{stale}} \cdot \mathbf{1}[\texttt{ExhaustedExhibit}],
+\end{equation}
+where $\alpha_{\mathrm{new}} > \alpha_{\mathrm{rep}}, \alpha_{\mathrm{clar}}, \alpha_{\mathrm{ask}} > 0$ (preserving the primacy of new-fact introduction while rewarding other content-advancing actions) and $\alpha_{\mathrm{stale}} > 0$ introduces a \emph{staleness penalty} for remaining at an exhausted exhibit.
+
+\paragraph{Range and sign.} The range includes negative values via the staleness penalty, making this formulation genuinely bipolar. This directly addresses the structural novelty bias by ensuring that (a)~actions other than \texttt{ExplainNewFact} receive positive novelty credit, and (b)~lingering at an exhausted exhibit is actively penalised.
+
+\paragraph{Policy-invariance analysis.}
+The broadened novelty reward is \textbf{not expressible as potential-based shaping} because the indicator functions depend on the \emph{action taken}, not only on the state transition. It therefore does not satisfy the \citet{ng1999} condition and may alter the optimal policy. This is an \emph{explicit design choice}: the goal is precisely to alter the relative advantages of different actions. The empirical evaluation will assess whether the induced policy is preferable to the baseline on coverage, engagement, and OCI metrics.
+
+\subsection{Combined Bipolar Reward}
+
+The proposed combined reward integrates the centred engagement component with the broadened novelty component:
+\begin{equation}
+\label{eq:combined}
+\Rbip = \rceng + \rbnov,
+\end{equation}
+with range $[-w_e - \alpha_{\mathrm{stale}},\; w_e + \alpha_{\mathrm{new}}]$. This is the primary experimental condition. Auxiliary components from \citet{bourdon2025}---responsiveness bonus, transition penalty, conclude bonus---may be layered on top as secondary conditions to test their interaction with the bipolar base reward.
+
+% ══════════════════════════════════════════════════════════
+\section{Research Questions and Hypotheses}
+\label{sec:rqs}
+% ══════════════════════════════════════════════════════════
+
+\paragraph{Main research question.}
+\textit{To what extent does redesigning the baseline reward function of \citet{bourdon2025} to produce bipolar (positive and negative) signals improve the learning dynamics, policy diversity, and exhibit coverage of a flat Actor-Critic museum dialogue agent, and does the bipolar reward reduce the option collapse observed in Option-Critic hierarchical policies?}
+
+\medskip
+\noindent\textbf{RQ1.} Does the centred engagement reward (Equation~\ref{eq:centred}) produce a qualitatively different learning signal compared to the asymmetric engagement reward of \citet{bourdon2025}, as measured by policy entropy, action diversity, and engagement adaptation?
+
+\noindent\textbf{RQ2.} Does the broadened novelty reward (Equation~\ref{eq:broadnov}) reduce option collapse in Option-Critic and increase action diversity in flat Actor-Critic policies, compared to the increment-based novelty reward of \citet{bourdon2025}?
+
+\noindent\textbf{RQ3.} Does the combined bipolar reward (Equation~\ref{eq:combined}) improve exhibit coverage and return for both flat and hierarchical architectures, and does it reduce the flat--hierarchical performance gap observed by \citet{bourdon2025}?
+
+\noindent\textbf{RQ4.} Which of the proposed reward formulations satisfy the policy-invariance conditions of \citet{ng1999} and \citet{devlin2012}, and does policy-invariant versus non-policy-invariant shaping produce observably different empirical outcomes in this setting?
+
+\subsection{Hypotheses}
+
+\begin{description}[style=nextline, leftmargin=1.5cm]
+    \item[H1] The centred engagement reward will reduce policy collapse on the \texttt{Explain} option (lower OCI) and increase engagement-adaptive behaviour, measured by the Spearman correlation between action selection and dwell time variation.
+
+    \item[H2] The broadened novelty reward will reduce OCI from the baseline value of $\approx 88$ to below~50, and will increase action entropy by at least 0.5~nats in both flat and hierarchical architectures.
+
+    \item[H3] The combined bipolar reward will improve hierarchical (SMDP) exhibit coverage above the 55.5\% ceiling achieved by the best reward-aligned configuration in \citet{bourdon2025}, while maintaining flat (MDP) coverage above 90\%.
+
+    \item[H4] Policy-invariant formulations (centred engagement) will produce more stable training---measured by lower return variance---than non-policy-invariant formulations (broadened novelty), consistent with the theoretical guarantee that the optimal policy is preserved under potential-based shaping.
+\end{description}
+
+% ══════════════════════════════════════════════════════════
+\section{Methodology}
+\label{sec:method}
+% ══════════════════════════════════════════════════════════
+
+\subsection{Experimental Design}
+
+The experimental design is a $4 \times 2 \times 2$ factorial:
+\begin{itemize}[nosep]
+    \item \textbf{Reward formulation} (4 levels): baseline \citep{bourdon2025}, centred engagement only, broadened novelty only, combined bipolar.
+    \item \textbf{Architecture} (2 levels): flat Actor-Critic (MDP), hierarchical Option-Critic (SMDP).
+    \item \textbf{Simulator} (2 levels): Sim8 (probabilistic, overlapping dwell ranges), State Machine (deterministic, non-overlapping dwell ranges).
+\end{itemize}
+
+All other hyperparameters are held at the optimal values identified by \citet{bourdon2025} in H1: $\gamma = 0.80$, learning rate $= 5 \times 10^{-5}$. Each condition trains for 1{,}000 episodes with $n = 3$ random seeds, following the protocol of \citet{bourdon2025}. The knowledge base (21 facts across exhibits in a Dutch Golden Age portrait gallery), action space, state representation (143-d DialogueBERT), and evaluation metrics are inherited directly from \citet{bourdon2025} to enable direct comparison.
+
+\subsection{Evaluation Metrics}
+
+The five core metrics from \citet{bourdon2025} are retained:
+\begin{enumerate}[nosep]
+    \item \textbf{Episodic return}: cumulative $R_t$ per episode, measuring overall policy performance.
+    \item \textbf{Exhibit coverage}: percentage of the 21 facts mentioned, measuring content delivery breadth.
+    \item \textbf{Mean dwell}: average normalised gaze attention per turn ($0.0$--$1.0$), measuring visitor attention.
+    \item \textbf{Learning efficiency}: episodes to reach 80\% of final mean return, measuring sample complexity.
+    \item \textbf{Policy stability}: standard deviation of return in the final 100 episodes, measuring convergence reliability.
+\end{enumerate}
+
+Four additional metrics specific to this thesis are introduced:
+\begin{enumerate}[nosep, start=6]
+    \item \textbf{Option Collapse Index (OCI)}: the percentage of episodes in which more than 80\% of actions come from a single option. Lower is better.
+    \item \textbf{Policy entropy}: action-level Shannon entropy averaged over the final 100 episodes, measured in nats. Higher values indicate more diverse action selection.
+    \item \textbf{Dwell--action correlation}: Spearman $\rho$ between $\mathrm{dwell}_t$ and action-type selection at $t+1$, measuring the degree to which the agent adapts its behaviour to engagement fluctuations.
+    \item \textbf{Reward sign ratio}: proportion of turns with $R_t < 0$, measuring whether the bipolar signal is actually active during training. A value near zero would indicate that the bipolar design is not producing negative rewards in practice.
+\end{enumerate}
+
+\subsection{Simulators}
+\label{sec:simulators}
+
+Two simulators, both inherited from \citet{bourdon2025} without modification, provide the training environments:
+
+\paragraph{Sim8 (probabilistic).}
+Generates dwell values from overlapping Gaussian distributions conditioned on a latent visitor engagement state. Because the Gaussians overlap, a given dwell value could plausibly arise from either an engaged or disengaged visitor, producing a noisy, stochastic training signal. This simulator tests whether the proposed reward reformulations are robust to ambiguous engagement signals. In \citet{bourdon2025}, Sim8 did not support engagement-adaptive behaviours even for flat policies, suggesting it represents a lower bound on signal quality.
+
+\paragraph{State Machine (deterministic).}
+Assigns non-overlapping dwell ranges to distinct visitor states (engaged, neutral, disengaged), producing a cleaner signal with no ambiguity about the visitor's engagement state. This simulator tests the reformulations under ideal signal conditions. In \citet{bourdon2025}, the State Machine enabled engagement-adaptive behaviours (35.8\% recovery actions) not observed under Sim8, establishing it as the upper bound on signal quality.
+
+Using both simulators enables a direct assessment of how reward sign structure interacts with signal quality---a question with practical implications for deployment in real museums where gaze signals are inherently noisy.
+
+\subsection{Statistical Reporting}
+
+All results are reported as mean $\pm$ standard deviation computed from the final 100 episodes of each seed. Per-seed results are reported for key comparisons to demonstrate seed-level consistency. Effect sizes are reported where relevant. Comparisons with the \citet{bourdon2025} baseline use the values reported in Tables~29 and~39 of that thesis:
+\begin{itemize}[nosep]
+    \item H1 MDP baseline: coverage 98.7\%, OCI 0.3.
+    \item H1 SMDP baseline: coverage 49.1\%, OCI 88.3.
+    \item Best H5 reward-aligned SMDP: coverage 55.5\%, OCI 2.1.
+\end{itemize}
+
+% ══════════════════════════════════════════════════════════
+\section{Theoretical Contributions}
+\label{sec:theory}
+% ══════════════════════════════════════════════════════════
+
+Beyond the empirical evaluation, this thesis makes a theoretical contribution in the form of a structured policy-invariance analysis of each proposed reward formulation. Following \citet{ng1999}, for each formulation $R'_t = R_t + F(s_t, s_{t+1})$, the analysis determines whether $F$ can be expressed as $\gamma\Phi(s_{t+1}) - \Phi(s_t)$ for some real-valued $\Phi$. The analysis proceeds as follows:
+
+\begin{itemize}[nosep]
+    \item For the \textbf{centred engagement reward} (\Cref{sec:centred}), which involves a dynamic baseline, the \citet{devlin2012} extension is applied to verify that the time-varying potential satisfies the conditions for policy invariance. Since the baseline $\bar{d}_t$ depends only on observed dwell (a state feature) and not on the action, the formulation qualifies as dynamic PBRS.
+
+    \item For the \textbf{threshold-based engagement reward} with $w^+ = w^-$, the constant offset is a degenerate potential, and the standard \citet{ng1999} result applies directly.
+
+    \item For the \textbf{broadened novelty reward}, which depends on the action taken via indicator functions, the analysis explicitly flags the policy-alteration risk and explains the design rationale for accepting it: the goal is to deliberately change the action-specific advantages that cause option collapse.
+\end{itemize}
+
+This analysis contributes to the broader literature on reward engineering for dialogue systems by providing a worked example of applying reward-shaping theory to a concrete system with a known failure mode---a type of analysis rarely seen in the dialogue systems literature.
+
+% ══════════════════════════════════════════════════════════
+\section{Scope and Limitations}
+\label{sec:scope}
+% ══════════════════════════════════════════════════════════
+
+This thesis is scoped to simulator-based evaluation on the Sim8 and State Machine simulators of \citet{bourdon2025}; real-world validation with museum visitors is outside scope. The knowledge base, action space, and state representation are inherited without modification to enable direct comparison; this means the findings may not generalise to dialogue agents with fundamentally different action spaces or engagement signals.
+
+The thesis does not implement \emph{learned reward models} (as in \citealt{su2016}) or \emph{attention-based reward densification} (as in \citealt{holmes2025}); these are identified as directions for future work in cases where hand-crafted bipolar rewards prove insufficient.
+
+The proposed centred engagement reward (\Cref{sec:centred}) assumes that a meaningful running-mean baseline can be estimated from the dwell signal during training. In very short episodes or with highly non-stationary visitor simulators, this assumption may not hold, and the adaptive baseline could introduce unwanted variance. The decay parameter $\alpha$ must be tuned to balance responsiveness to recent engagement changes against stability of the baseline estimate.
+
+% ══════════════════════════════════════════════════════════
+\section{Expected Contributions and Impact}
+\label{sec:impact}
+% ══════════════════════════════════════════════════════════
+
+If the hypotheses are supported, this thesis will establish that \emph{bipolar reward design is a necessary precondition} for effective RL policy learning in museum dialogue systems with continuous engagement signals, and will provide a concrete, theoretically grounded recipe for transforming non-negative engagement and novelty signals into bipolar rewards.
+
+If the hypotheses are partially or fully rejected, the results will nonetheless contribute by \emph{delimiting the conditions} under which reward sign structure matters for RL dialogue agents---a question that has received little attention in the dialogue systems literature.
+
+The findings directly address the open problem identified in \citet{bourdon2025} and are positioned to inform future work on reward function design for any RL-based conversational agent that relies on a continuous, gaze-derived or attention-derived engagement signal.
+
+% ══════════════════════════════════════════════════════════
+\section{Timeline}
+\label{sec:timeline}
+% ══════════════════════════════════════════════════════════
+
+\begin{table}[h]
+\centering
+\caption{Indicative project timeline (17 weeks total).}
+\label{tab:timeline}
+\begin{tabular}{@{} l l c @{}}
+\toprule
+\textbf{Phase} & \textbf{Tasks} & \textbf{Duration} \\
+\midrule
+Literature review & Threads 1--3, Daniel thesis analysis & 3 weeks \\
+Reward design & Formal specification, theory analysis & 2 weeks \\
+Implementation & Reward components, simulator integration & 3 weeks \\
+Experiments & Factorial runs ($4 \times 2 \times 2$, $n = 3$) & 3 weeks \\
+Analysis \& writing & Results, discussion, thesis draft & 4 weeks \\
+Revision \& submission & Supervisor feedback, final version & 2 weeks \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ══════════════════════════════════════════════════════════
+\section*{References}
+% ══════════════════════════════════════════════════════════
+
+\begin{thebibliography}{99}
+
+\bibitem[Bacon et al., 2017]{bacon2017}
+Bacon, P.-L., Harb, J., \& Precup, D. (2017).
+The Option-Critic architecture.
+In \textit{Proceedings of the 31st AAAI Conference on Artificial Intelligence}, pp.~1726--1734.
+
+\bibitem[Bourdon, 2025]{bourdon2025}
+Bourdon, D. (2025).
+Adaptive Dialogue Policies for Museum Conversational Agents: A Comparative Study of Hierarchical and Flat Reinforcement Learning with Gaze-Based Engagement.
+Master's thesis, University of Twente.
+
+\bibitem[Burda et al., 2018]{burda2018}
+Burda, Y., Edwards, H., Storkey, A., \& Klimov, O. (2018).
+Exploration by random network distillation.
+In \textit{Proceedings of the 7th International Conference on Learning Representations (ICLR)}.
+
+\bibitem[Devlin \& Kudenko, 2012]{devlin2012}
+Devlin, S., \& Kudenko, D. (2012).
+Dynamic potential-based reward shaping.
+In \textit{Proceedings of the 11th International Conference on Autonomous Agents and Multiagent Systems (AAMAS)}, pp.~433--440.
+
+\bibitem[Holmes \& Chi, 2025]{holmes2025}
+Holmes, C., \& Chi, E.-C. (2025).
+Attention-based reward shaping for sparse and delayed rewards.
+arXiv:2505.10802.
+
+\bibitem[Ibrahim et al., 2024]{ibrahim2024}
+Ibrahim, A., et al. (2024).
+Comprehensive overview of reward engineering and shaping in advancing reinforcement learning applications.
+\textit{IEEE Access}, 12.
+
+\bibitem[Jian et al., 2025]{jian2025}
+Jian, Y., et al. (2025).
+Enhancing visual reflection in vision-language models.
+arXiv:2509.12132.
+
+\bibitem[Kiruluta et al., 2025]{kiruluta2025}
+Kiruluta, A., Lemos, R., \& Burity, B. (2025).
+History-aware cross-attention reinforcement for multi-turn dialogue.
+arXiv:2506.11108.
+
+\bibitem[Li et al., 2016]{li2016}
+Li, J., Monroe, W., Ritter, A., Galley, M., Gao, J., \& Jurafsky, D. (2016).
+Deep reinforcement learning for dialogue generation.
+arXiv:1606.01541.
+
+\bibitem[Ng et al., 1999]{ng1999}
+Ng, A. Y., Harada, D., \& Russell, S. (1999).
+Policy invariance under reward transformations: Theory and application to reward shaping.
+In \textit{Proceedings of the 16th International Conference on Machine Learning (ICML)}, pp.~278--287.
+
+\bibitem[Ostrovski et al., 2017]{ostrovski2017}
+Ostrovski, G., Bellemare, M. G., van den Oord, A., \& Munos, R. (2017).
+Count-based exploration with neural density models.
+In \textit{Advances in Neural Information Processing Systems (NeurIPS)}, 30.
+
+\bibitem[Pathak et al., 2017]{pathak2017}
+Pathak, D., Agrawal, P., Efros, A. A., \& Darrell, T. (2017).
+Curiosity-driven exploration by self-supervised prediction.
+In \textit{Proceedings of the 34th International Conference on Machine Learning (ICML)}, pp.~2778--2787.
+
+\bibitem[Su et al., 2016]{su2016}
+Su, P.-H., et al. (2016).
+On-line active reward learning for policy optimisation in spoken dialogue systems.
+In \textit{Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (ACL)}, pp.~2431--2441.
+
+\end{thebibliography}
+
+\end{document}

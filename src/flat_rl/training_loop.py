@@ -1,5 +1,6 @@
 import os
 import time
+import numpy as np
 from typing import Dict, Any
 
 from src.training.training_loop import HRLTrainingLoop
