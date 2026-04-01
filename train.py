@@ -160,6 +160,8 @@ Examples:
                        help='EMA decay factor for centred engagement baseline (default: 0.1, effective memory ~10 steps)')
     parser.add_argument('--novelty-per-fact', type=float, default=1.0,
                        help='Novelty reward scale: r^nov_t = novelty_per_fact × |new_facts| (default: 1.0)')
+    parser.add_argument('--engagement-gated-novelty', action='store_true',
+                       help='Use engagement-gated novelty: r_t = dwell * novelty_credit. Novelty only pays off when visitor is engaged. Replaces additive engagement+novelty.')
     parser.add_argument('--broadened-novelty', action='store_true',
                        help='Use broadened novelty reward (thesis Eq. 5). Replaces standard novelty with multi-action credit: ExplainNewFact + RepeatFact + ClarifyFact + AskQuestion - staleness.')
     parser.add_argument('--alpha-new', type=float, default=1.0,
@@ -170,8 +172,14 @@ Examples:
                        help='Broadened novelty: reward for ClarifyFact (default: 0.3)')
     parser.add_argument('--alpha-ask', type=float, default=0.2,
                        help='Broadened novelty: reward for AskOpinion/AskMemory/AskClarification (default: 0.2)')
-    parser.add_argument('--alpha-stale', type=float, default=0.5,
-                       help='Broadened novelty: staleness penalty at exhausted exhibit for non-Explain actions (default: 0.5)')
+    parser.add_argument('--alpha-stale', type=float, default=1.0,
+                       help='Broadened novelty: staleness penalty at exhausted exhibit for non-Explain actions (default: 1.0)')
+    parser.add_argument('--alpha-transition', type=float, default=0.4,
+                       help='Broadened novelty: reward for transition actions (default: 0.4)')
+    parser.add_argument('--action-repeat-penalty', type=float, default=0.15,
+                       help='Penalty per consecutive same-subaction over threshold (default: 0.15)')
+    parser.add_argument('--action-repeat-threshold', type=int, default=2,
+                       help='Number of consecutive repeats before penalty kicks in (default: 2)')
     parser.add_argument('--w-responsiveness', type=float, default=0.5,
                        help='Responsiveness reward: +w_responsiveness (answer) / -0.6*w_responsiveness (deflect) (default: 0.5, increased for H2)')
     parser.add_argument('--w-conclude', type=float, default=0.4,
@@ -222,14 +230,22 @@ Examples:
                        help='Value clipping range: clip values and targets to [-value-clip, value-clip] (default: 10.0). Use 50.0 to allow higher value estimates for high-return episodes.')
     
     # ===== SMDP COVERAGE FIX: REWARD STRUCTURE PARAMETERS =====
-    parser.add_argument('--exhaustion-penalty', type=float, default=-0.5,
+    parser.add_argument('--exhaustion-penalty', type=float, default=-1.0,
                        help='Penalty for Explain actions at exhausted exhibits (default: -0.5, try -2.0 for stronger signal)')
-    parser.add_argument('--transition-bonus', type=float, default=0.0,
+    parser.add_argument('--transition-bonus', type=float, default=0.3,
                        help='Immediate bonus for successful exhibit transitions (default: 0.0, try 1.5)')
     parser.add_argument('--zero-engagement-exhausted', action='store_true',
                        help='Zero engagement reward for Explain at exhausted exhibits (creates Q-value separation)')
     parser.add_argument('--beta-supervision-weight', type=float, default=0.0,
                        help='Beta supervision weight for termination guidance (default: 0.0 = pure Option-Critic, try 0.5-1.0 for heuristic guidance)')
+
+    # ===== RESPONSE TYPE FEATURES (thesis extension) =====
+    parser.add_argument('--response-type-feature', action='store_true',
+                       help='Add visitor response type as 6-dim one-hot to state vector (acknowledgment, follow_up_question, question, statement, confusion, silence)')
+    parser.add_argument('--response-type-reward', action='store_true',
+                       help='Add response-type reward component: positive for engaged reactions, negative for confusion/silence')
+    parser.add_argument('--w-response-type', type=float, default=0.3,
+                       help='Weight for response-type reward component (default: 0.3)')
     
     # ===== EVALUATION & VISUALIZATION =====
     parser.add_argument('--map-interval', type=int, default=50,
@@ -241,8 +257,10 @@ Examples:
     
     # ===== SIMULATOR SELECTION =====
     parser.add_argument('--simulator', type=str, default='sim8',
-                       choices=['sim8', 'sim8_original', 'state_machine'],
-                       help='Simulator type: sim8 (adapted), sim8_original (neural T5+VAE), or state_machine. Default: sim8')
+                       choices=['sim8', 'sim8_original', 'state_machine', 'hybrid'],
+                       help='Simulator type: sim8 (adapted), sim8_original (neural T5+VAE), state_machine, or hybrid (state_machine + sim8 dynamics). Default: sim8')
+    parser.add_argument('--stochasticity', type=float, default=0.5,
+                       help='Hybrid simulator: sim8 influence (0.0=pure state machine, 0.5=balanced, 1.0=max sim8). Default: 0.5')
     
     # ===== REWARD MODE (per paper.tex) =====
     parser.add_argument('--reward_mode', type=str, default='baseline',
@@ -404,6 +422,7 @@ Examples:
         "mode": args.mode,
         "reward_mode": args.reward_mode,
         "simulator": args.simulator,
+        "stochasticity": args.stochasticity if args.simulator == "hybrid" else None,
         "timestamp": datetime.now().isoformat(),
         "episodes": args.episodes,
         "max_turns_per_episode": args.turns,
@@ -418,6 +437,7 @@ Examples:
             "reward_mode": args.reward_mode,
             "w_engagement": args.w_engagement,
             "centred_engagement": args.centred_engagement,
+            "engagement_gated_novelty": args.engagement_gated_novelty,
             "dwell_ema_alpha": args.dwell_ema_alpha,
             "novelty_per_fact": args.novelty_per_fact,
             "broadened_novelty": args.broadened_novelty,
@@ -426,8 +446,14 @@ Examples:
             "alpha_clar": args.alpha_clar,
             "alpha_ask": args.alpha_ask,
             "alpha_stale": args.alpha_stale,
+            "alpha_transition": args.alpha_transition,
+            "action_repeat_penalty": args.action_repeat_penalty,
+            "action_repeat_threshold": args.action_repeat_threshold,
             "w_responsiveness": args.w_responsiveness,
-            "w_conclude": args.w_conclude
+            "w_conclude": args.w_conclude,
+            "response_type_feature": args.response_type_feature,
+            "response_type_reward": args.response_type_reward,
+            "w_response_type": args.w_response_type
         },
         "note": f"Reward mode: {args.reward_mode}. Baseline = engagement + novelty only. Augmented adds responsiveness, transition, conclude, question-asking.",
         "map_interval": args.map_interval,
@@ -456,7 +482,7 @@ Examples:
     print(f"Learning rate: {args.lr}")
     print(f"Gamma: {args.gamma}")
     print(f"Device: {args.device}")
-    print(f"Simulator: {args.simulator}")
+    print(f"Simulator: {args.simulator}" + (f" (stochasticity={args.stochasticity})" if args.simulator == "hybrid" else ""))
     print(f"Reward Mode: {args.reward_mode.upper()}")
     print()
     if args.reward_mode == "baseline":
@@ -471,10 +497,16 @@ Examples:
         print(f"  Novelty:            BROADENED (Eq. 5): α_new={args.alpha_new}, α_rep={args.alpha_rep}, α_clar={args.alpha_clar}, α_ask={args.alpha_ask}, α_stale={args.alpha_stale}")
     else:
         print(f"  Novelty:            r^nov_t = {args.novelty_per_fact:.2f} × |new_facts|  [STANDARD]")
+    if args.engagement_gated_novelty:
+        print(f"  Combination:        ENGAGEMENT-GATED: r_t = dwell × novelty_credit (multiplicative)")
     print(f"  Responsiveness:     +{args.w_responsiveness:.2f} (answer) / -{args.w_responsiveness*0.6:.2f} (deflect)")
     print(f"  Conclude:           {args.w_conclude:.2f} × |exhibits_covered|")
     print("  Transition:         -0.20 (0 facts) / -0.16 (1 fact)")
     print()
+    if args.response_type_reward:
+        print(f"  Response Type:      w={args.w_response_type:.2f} × rtype_value (ack=+0.3, follow_up=+0.25, q=+0.1, stmt=0, confusion=-0.3, silence=-0.2)")
+    if args.response_type_feature:
+        print(f"  State Feature:      +6-dim one-hot response type vector")
     print("  Note: Simplified reward function - no exhausted exhibit penalty, no repeat bonuses")
     print("        Behavioral shaping (exhausted exhibits, spam) via simulator dwell adjustments")
     print("        Transition insufficiency has 3-turn exemption after successful transition")
@@ -495,6 +527,7 @@ Examples:
     os.environ["HRL_W_RESPONSIVENESS"] = str(args.w_responsiveness)
     os.environ["HRL_W_CONCLUDE"] = str(args.w_conclude)
     os.environ["HRL_CENTRED_ENGAGEMENT"] = "1" if args.centred_engagement else "0"
+    os.environ["HRL_ENGAGEMENT_GATED_NOVELTY"] = "1" if args.engagement_gated_novelty else "0"
     os.environ["HRL_DWELL_EMA_ALPHA"] = str(args.dwell_ema_alpha)
 
     # Broadened novelty reward (thesis Eq. 5)
@@ -504,6 +537,11 @@ Examples:
     os.environ["HRL_ALPHA_CLAR"] = str(args.alpha_clar)
     os.environ["HRL_ALPHA_ASK"] = str(args.alpha_ask)
     os.environ["HRL_ALPHA_STALE"] = str(args.alpha_stale)
+    os.environ["HRL_ALPHA_TRANSITION"] = str(args.alpha_transition)
+
+    # Anti-spam: action repetition penalty
+    os.environ["HRL_ACTION_REPEAT_PENALTY"] = str(args.action_repeat_penalty)
+    os.environ["HRL_ACTION_REPEAT_THRESHOLD"] = str(args.action_repeat_threshold)
 
     # H1 Advanced: Pass diversity reward coefficient
     os.environ["HRL_DIVERSITY_REWARD_COEF"] = str(args.diversity_reward_coef)
@@ -512,6 +550,11 @@ Examples:
     os.environ["HRL_EXHAUSTION_PENALTY"] = str(args.exhaustion_penalty)
     os.environ["HRL_TRANSITION_BONUS"] = str(args.transition_bonus)
     os.environ["HRL_ZERO_ENGAGEMENT_EXHAUSTED"] = "1" if args.zero_engagement_exhausted else "0"
+
+    # Response type features
+    os.environ["HRL_RESPONSE_TYPE_FEATURE"] = "1" if args.response_type_feature else "0"
+    os.environ["HRL_RESPONSE_TYPE_REWARD"] = "1" if args.response_type_reward else "0"
+    os.environ["HRL_W_RESPONSE_TYPE"] = str(args.w_response_type)
     
     # Initialize training loop based on variant or mode
     if args.variant:
@@ -541,6 +584,7 @@ Examples:
         map_interval=args.map_interval,
         verbose=args.verbose,
         simulator_type=args.simulator,
+        stochasticity=args.stochasticity,
         termination_strategy=args.termination,
         state_representation=args.state_representation,
         option_granularity=args.option_granularity,

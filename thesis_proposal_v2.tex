@@ -1,0 +1,571 @@
+% ============================================================================
+% MSc Thesis Proposal
+% Topic: RL-Based Conversational Agents for Museum Guide Settings
+% Sections: Abstract, 1 (Introduction), 2 (Background)
+% ============================================================================
+\documentclass[a4paper, 11pt]{article}
+
+% --- Packages ---------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+% \usepackage{lmodern}  % Uncomment if lmodern fonts are available
+\usepackage[english]{babel}
+
+% Page layout
+\usepackage[
+  top=2.5cm,
+  bottom=2.5cm,
+  left=3cm,
+  right=2.5cm
+]{geometry}
+
+% Math
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{bm}              % Bold math symbols
+
+% Tables and figures
+\usepackage{booktabs}         % Professional tables
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{subcaption}
+
+% Algorithms
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+
+% Code listings (if needed)
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+}
+
+% References and citations
+\usepackage[round, authoryear]{natbib}
+\bibliographystyle{plainnat}
+
+% Hyperlinks
+\usepackage{xcolor}
+\usepackage[
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=blue!60!black,
+  urlcolor=blue!60!black
+]{hyperref}
+\usepackage[nameinlink]{cleveref}
+
+% Spacing
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{parskip}
+
+% Header/footer
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\itshape MSc Thesis Proposal}
+\fancyhead[R]{\small\itshape \thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Custom commands
+\newcommand{\reng}{r_{\mathrm{eng}}}
+\newcommand{\rnov}{r_{\mathrm{nov}}}
+\newcommand{\rtotal}{r_{\mathrm{total}}}
+\newcommand{\dwell}{\mathrm{dwell}_t}
+\newcommand{\Fused}{F_{\mathrm{used}}}
+\newcommand{\pillar}[1]{\textbf{Pillar~#1}}
+\newcommand{\researchq}[1]{\textbf{RQ#1}}
+
+% ============================================================================
+\begin{document}
+
+% --- Title Page -------------------------------------------------------------
+\begin{titlepage}
+  \centering
+  \vspace*{1cm}
+
+  % University logo placeholder
+  % \includegraphics[width=0.3\textwidth]{university_logo.png}\\[1cm]
+
+  {\Large\bfseries University of Twente}\\[0.3cm]
+  {\large Faculty of Electrical Engineering, Mathematics and Computer Science}\\[0.3cm]
+
+  \rule{\textwidth}{1.5pt}\\[0.5cm]
+  {\LARGE\bfseries MSc Thesis Proposal}\\[0.3cm]
+  \rule{\textwidth}{1.5pt}\\[1.5cm]
+
+  {\Large\bfseries Simulator Fidelity, Reward Design, and Gaze-Based\\
+  Engagement Signals for RL-Driven Museum Guide Agents}\\[2cm]
+
+  \begin{tabular}{rl}
+    \textbf{Author:}      & Nayan Manu Krishna Bindhu \\
+    \textbf{Student ID:}   & s3533204 \\[0.5cm]
+    \textbf{1st Supervisor:} & Dr. Shenghui Wang \\
+    \textbf{2nd Supervisor:} & [Supervisor Name] \\
+    \textbf{Programme:}    & MSc Interaction Technology \\
+    \textbf{Date:}         & \today \\
+  \end{tabular}
+
+  \vfill
+
+  {\small\itshape This proposal builds upon the work of Daniel Bourdon,
+  whose thesis implemented an RL-based museum guide agent using gaze-derived
+  engagement signals.}
+\end{titlepage}
+
+% --- Abstract ---------------------------------------------------------------
+\newpage
+\section*{Abstract}
+\addcontentsline{toc}{section}{Abstract}
+
+Reinforcement learning can train dialogue agents that adapt their behaviour to real-time engagement signals. \citet{bourdon2024thesis} showed that a flat Actor-Critic agent, trained with gaze-derived dwell time as a continuous engagement signal, learns diverse dialogue strategies for a museum guide setting---but only when the visitor simulator provides sufficiently clear reward signals. This result points to three bottlenecks in the current system: the visitor simulator lacks the fidelity to produce discriminative engagement dynamics; the reward function is structurally non-negative, so the agent is never penalised for losing visitor attention; and only one of six available gaze features is used as the engagement signal, discarding potentially informative eye-tracking dimensions.
+
+This thesis proposes a three-pillar investigation of these bottlenecks. The main contribution (\pillar{2}) is a controlled \emph{simulator fidelity ladder}: four progressively improved versions of the State Machine simulator (SM-v1 through SM-v4), each adding one fidelity dimension---calibrated dwell ranges, cross-exhibit memory, and persona-specific engagement dynamics---to measure how simulator design affects the emergence of engagement-adaptive policies. \pillar{1} addresses two reward function pathologies through a bipolar reward reformulation: a centred engagement reward that produces genuine negative signals for below-baseline attention, and a broadened novelty reward with a staleness penalty to reduce the 88.3\% option collapse toward \texttt{ExplainNewFact}. \pillar{3} compares individual and combined gaze features---dwell time, saccade span, gaze entropy, fixation change rate, dominant object ratio, and gaze entry latency---as engagement signals for RL policy learning. Every experiment is repeated with at least five random seeds, and includes a comparison isolating what the RL policy learns from what the prompt template already provides.
+
+\newpage
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{Introduction}
+\label{sec:introduction}
+% ============================================================================
+
+Museum conversational agents face a problem that task-oriented dialogue systems do not: there is no clear completion criterion. A slot-filling system succeeds when the right fields are populated. A museum guide has to sustain a visitor's interest across thirty to fifty turns spanning multiple exhibits, deciding not only \emph{what} to say---which facts to present, which questions to ask, when to suggest moving on---but also \emph{when} to say it, adapting pacing and strategy to the visitor's fluctuating attention.
+
+Reinforcement learning (RL) fits this problem well. By formulating dialogue management as a Markov Decision Process (MDP), the agent can learn a policy that maps observed visitor states to dialogue actions, optimising a reward signal that reflects engagement and content coverage. Gaze-derived features, particularly dwell time on the current exhibit, offer a continuous, non-intrusive proxy for visitor attention that can serve as this reward signal. The agent learns \emph{from interaction} which strategies maintain engagement, rather than relying on hand-authored rules that cannot anticipate the diversity of real visitor behaviour.
+
+\citet{bourdon2024thesis} implemented this idea in a proof-of-concept system that trains both hierarchical (Option-Critic) and flat (Actor-Critic) dialogue policies using dwell time as the engagement reward, structured prompt headers for language generation grounding, and two visitor simulators of differing fidelity. His evaluation across 53 experimental conditions produced three main findings. First, flat Actor-Critic policies outperformed hierarchical alternatives by a wide margin, achieving 98.7\% content coverage compared to a ceiling of 53.7\% for the best Option-Critic configuration---a 45 percentage point gap that persisted across all hyperparameter settings. Second, augmented reward components (responsiveness bonuses, transition penalties, question-asking incentives) failed to close this gap, suggesting that reward engineering alone cannot compensate for deeper structural problems. Third, switching from the data-driven Sim8 simulator to the theory-driven State Machine simulator produced qualitatively different learned behaviours: flat policies trained on the State Machine achieved 31.7\% \texttt{AskQuestion} usage and 35.8\% recovery action usage, compared to 4.4\% and near-zero respectively under Sim8. Bourdon concluded that ``signal quality fundamentally determines what behaviors agents can learn, not just how fast they learn'' (\S9.4).
+
+This thesis starts from that conclusion. If simulator signal quality is the primary bottleneck, then improving the simulator and measuring the downstream effects on policy learning should be the central research activity. But two additional bottlenecks compound the problem: the reward function's structural non-negativity prevents the agent from being penalised for engagement loss, and only one of six available gaze features is currently used as the engagement signal. This thesis addresses all three bottlenecks in a coordinated, three-pillar investigation.
+
+% ----------------------------------------------------------------------------
+\subsection{Problem Statement}
+\label{sec:problem_statement}
+% ----------------------------------------------------------------------------
+
+Three interacting bottlenecks---simulator fidelity, reward function design, and engagement signal quality---limit the emergence of engagement-adaptive dialogue policies in RL-trained museum guide agents.
+
+The first bottleneck is \textbf{simulator fidelity}. Bourdon's State Machine simulator, despite producing clearer signals than Sim8, has several known limitations. Its state transitions are deterministic and threshold-based: for example, 3+ consecutive \texttt{ExplainNewFact} actions trigger a transition to the \textsc{Overloaded} state regardless of context. The simulator resets all conversation-level counters when transitioning between exhibits, so a visitor who was overwhelmed at Exhibit~1 starts fresh at Exhibit~2. The three persona profiles (Explorer, Focused, Impatient) modulate only transition thresholds, not the underlying engagement dynamics or dwell distributions. There is no temporal drift: a visitor remains in the \textsc{Engaged} state indefinitely unless specific action-count thresholds are triggered. These simplifications prevent the simulator from producing gradual, context-dependent engagement trajectories that characterise real museum visitors, which in turn limits the behavioural repertoire the agent can learn.
+
+The second bottleneck is \textbf{reward function design}. The baseline reward function combines two components: an engagement reward
+\begin{equation}
+  \reng = w_e \cdot \dwell,
+\end{equation}
+and a novelty reward
+\begin{equation}
+  \rnov = \alpha_{\mathrm{nov}} \cdot \bigl(|\Fused(t)| - |\Fused(t-1)|\bigr).
+\end{equation}
+Both components are structurally non-negative. Since $\dwell \in [0,1]$, the engagement reward never penalises the agent for losing visitor attention---a dwell of 0.10 (near-total disengagement) still yields a small positive reward. Similarly, since facts can only be added to $\Fused$, the novelty reward is always $\geq 0$ and only \texttt{ExplainNewFact} can trigger it---hence the 88.3\% option collapse observed in the function-based hierarchical design. Bourdon's experiments with augmented rewards (H2) showed that adding auxiliary components did not fix these structural issues: the best augmented configuration achieved only +2.6 percentage points in coverage over baseline, with unstable returns.
+
+The third bottleneck is \textbf{engagement signal dimensionality}. The system generates six gaze features per turn---dwell time, saccade span, gaze entropy, fixation change rate, dominant object ratio, and gaze entry latency---but only dwell time is used in the reward function. Bourdon explicitly noted this limitation: ``Future work should explore multi-feature gaze representations that combine multiple eye-tracking metrics for richer engagement estimation'' (\S4.4). However, within the current Sim8 simulator, all gaze features are derived from dwell time rather than independently modelled, which means that using additional features would amount to testing transformations of the same underlying signal. This creates a dependency between \pillar{3} (gaze features) and \pillar{2} (simulator design): meaningful gaze feature comparison requires a simulator that generates features with independent information content.
+
+These three bottlenecks interact. A low-fidelity simulator produces engagement signals without enough variation for the reward function to tell good actions from poor ones. A non-negative reward function wastes even a high-fidelity simulator's signals, because the agent is never penalised for engagement loss. And a single-feature engagement signal discards dimensions that might help the agent tell apart focused attention, scanning, and confusion. Fixing any one bottleneck in isolation is unlikely to produce large improvements; this thesis therefore investigates all three together, with simulator fidelity as the primary focus.
+
+% ----------------------------------------------------------------------------
+\subsection{Research Questions}
+\label{sec:research_questions}
+% ----------------------------------------------------------------------------
+
+The three research questions map to the three pillars. They are ordered by contribution weight: \researchq{1} is the main contribution, \researchq{2} is supporting, and \researchq{3} is exploratory.
+
+\begin{description}
+  \item[\researchq{1}] How does the fidelity of the visitor simulator affect the emergence of engagement-adaptive dialogue policies?
+
+  This question is investigated through a controlled simulator fidelity ladder (SM-v1 through SM-v4), where each version adds one fidelity dimension while holding the RL agent and reward function constant. The dependent variables are policy quality (cumulative reward), action diversity (entropy, option usage distribution), learning efficiency (episodes to convergence), and the emergence of qualitatively distinct behaviours such as recovery action usage and engagement-contingent question-asking.
+
+  \item[\researchq{2}] Do bipolar reward signals (centred engagement + broadened novelty) improve policy diversity and coverage compared to the non-negative baseline?
+
+  This question targets the two specific reward pathologies identified above. A centred engagement reward subtracts a running baseline from dwell time to produce genuine negative signals; a broadened novelty reward adds a staleness penalty for repetitive action sequences. The primary metric is the Option Collapse Index (OCI), which measures the percentage of episodes dominated by a single action type. A successful intervention should reduce OCI while maintaining or improving coverage.
+
+  \item[\researchq{3}] Which gaze features, individually and in combination, provide the most informative engagement signal for RL policy learning?
+
+  This question compares six gaze features as alternative engagement signals: dwell time, saccade span, gaze entropy, fixation change rate, dominant object ratio, and gaze entry latency. Features are tested individually and in selected combinations. The evaluation criteria are policy quality, learning speed, and action diversity under matched conditions. This pillar depends on \pillar{2} providing a simulator that generates gaze features with independent information content.
+\end{description}
+
+% ----------------------------------------------------------------------------
+\subsection{Thesis Structure}
+\label{sec:structure}
+% ----------------------------------------------------------------------------
+
+The rest of this proposal is organised as follows. \Cref{sec:background} covers the technical background: MDP dialogue formulation, Actor-Critic methods, user simulators, reward shaping, gaze-based engagement sensing, and Bourdon's baseline system. \Cref{sec:literature_review} reviews the literature across five threads: user simulator design, reward shaping, gaze and eye-tracking as engagement signals, Actor-Critic methods for dialogue, and museum guide agents. \Cref{sec:methodology} describes the methodology for each pillar. \Cref{sec:experiments} details the experimental design, including evaluation metrics and the prompt template ablation. \Cref{sec:contributions} summarises expected contributions, \Cref{sec:timeline} presents the timeline, and \Cref{sec:risks} identifies risks and mitigations.
+
+% ============================================================================
+\section{Background}
+\label{sec:background}
+% ============================================================================
+
+This section covers the MDP formulation of dialogue (\Cref{sec:bg_rl_dialogue}), Actor-Critic methods (\Cref{sec:bg_actor_critic}), user simulators for dialogue RL (\Cref{sec:bg_simulators}), potential-based reward shaping (\Cref{sec:bg_reward_shaping}), gaze-based engagement sensing (\Cref{sec:bg_gaze}), and Bourdon's baseline system (\Cref{sec:bg_baseline}). The goal is to establish definitions and notation; critical evaluation of related work is deferred to \Cref{sec:literature_review}.
+
+% ----------------------------------------------------------------------------
+\subsection{Reinforcement Learning for Dialogue}
+\label{sec:bg_rl_dialogue}
+% ----------------------------------------------------------------------------
+
+A dialogue system can be formulated as a Markov Decision Process (MDP) defined by the tuple $(\mathcal{S}, \mathcal{A}, P, R, \gamma)$, where $\mathcal{S}$ is a finite set of states, $\mathcal{A}$ is a finite set of actions, $P(s' | s, a)$ is the probability of transitioning to state $s'$ from state $s$ after taking action $a$, $R(s, a)$ is the immediate reward received after taking action $a$ in state $s$, and $\gamma \in [0, 1)$ is the discount factor that controls the trade-off between immediate and future rewards.
+
+At each time step $t$, the agent observes the current state $s_t \in \mathcal{S}$, selects an action $a_t \in \mathcal{A}$ according to its policy $\pi(a | s)$, receives a reward $r_t = R(s_t, a_t)$, and transitions to a new state $s_{t+1} \sim P(\cdot | s_t, a_t)$. The agent's objective is to learn a policy $\pi^*$ that maximises the expected cumulative discounted reward:
+\begin{equation}
+  \label{eq:objective}
+  J(\pi) = \mathbb{E}_\pi \left[ \sum_{t=0}^{\infty} \gamma^t R(s_t, a_t) \right].
+\end{equation}
+
+Two value functions are central to RL algorithms. The \emph{state-value function} $V^\pi(s)$ measures the expected return from state $s$ under policy $\pi$:
+\begin{equation}
+  \label{eq:value_function}
+  V^\pi(s) = \mathbb{E}_\pi \left[ \sum_{k=0}^{\infty} \gamma^k r_{t+k} \;\middle|\; s_t = s \right].
+\end{equation}
+The \emph{action-value function} $Q^\pi(s, a)$ measures the expected return from taking action $a$ in state $s$ and then following $\pi$:
+\begin{equation}
+  \label{eq:q_function}
+  Q^\pi(s, a) = \mathbb{E}_\pi \left[ \sum_{k=0}^{\infty} \gamma^k r_{t+k} \;\middle|\; s_t = s, a_t = a \right].
+\end{equation}
+These satisfy the Bellman equation:
+\begin{equation}
+  \label{eq:bellman}
+  Q^\pi(s, a) = R(s, a) + \gamma \sum_{s' \in \mathcal{S}} P(s' | s, a) \sum_{a' \in \mathcal{A}} \pi(a' | s') \, Q^\pi(s', a').
+\end{equation}
+
+In dialogue settings, this formulation faces three challenges \citep{bourdon2024thesis}. Credit assignment is difficult: in an episode of 30--50 turns, identifying which action improved engagement requires propagating reward information across many time steps. Data efficiency matters, because collecting real human conversations is expensive---hence the use of simulators for training. And action spaces can be large: Bourdon's system includes 8--12 primitive dialogue actions (e.g., \texttt{ExplainNewFact}, \texttt{AskOpinion}, \texttt{ClarifyFact}, \texttt{SuggestMove}), plus higher-level option groupings.
+
+Museum dialogue makes all of this harder. Episodes are long, reward signals (engagement and coverage) are noisy and delayed, and visitors follow unpredictable paths through the content. The simulator must produce signals with sufficient dynamic range for credit assignment, the reward function must provide informative gradients across the full range of engagement states, and the engagement signal itself must capture enough information to distinguish between qualitatively different visitor states.
+
+% ----------------------------------------------------------------------------
+\subsection{Actor-Critic Methods}
+\label{sec:bg_actor_critic}
+% ----------------------------------------------------------------------------
+
+Actor-Critic methods combine policy-based and value-based approaches by maintaining two components: an \emph{actor} that learns the policy $\pi(a | s)$ and a \emph{critic} that learns the value function $V(s)$ or $Q(s, a)$. The actor is updated using policy gradients, while the critic provides a baseline that reduces the variance of gradient estimates.
+
+The key quantity is the \emph{advantage function}:
+\begin{equation}
+  \label{eq:advantage}
+  A^\pi(s, a) = Q^\pi(s, a) - V^\pi(s),
+\end{equation}
+which measures how much better action $a$ is compared to the average action under the current policy. In the Advantage Actor-Critic (A2C) framework, the policy gradient is:
+\begin{equation}
+  \label{eq:policy_gradient}
+  \nabla_\theta J(\pi_\theta) = \mathbb{E}_\pi \left[ \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot A^\pi(s_t, a_t) \right],
+\end{equation}
+where $\theta$ are the policy parameters. The critic is trained by minimising the temporal-difference (TD) error:
+\begin{equation}
+  \label{eq:td_error}
+  \mathcal{L}_{\mathrm{critic}} = \left( r_t + \gamma V(s_{t+1}) - V(s_t) \right)^2.
+\end{equation}
+To maintain exploration, an entropy regularisation term $-\lambda_H H(\pi(\cdot | s_t))$ is added to the policy loss, penalising overly deterministic policies.
+
+Bourdon's system uses A2C as the flat (MDP) baseline. His Actor-Critic network takes the state vector $s_t$ as input and outputs action probabilities $\pi(a | s_t)$ and a state value estimate $V(s_t)$ through shared hidden layers (256 hidden units with an LSTM encoder of 128 hidden units). Training uses per-step updates with a learning rate of $1 \times 10^{-4}$, discount factor $\gamma = 0.99$, entropy coefficient $\lambda_H = 0.01$, and gradient clipping at norm 0.5.
+
+For the hierarchical (SMDP) variant, Bourdon implements the Option-Critic architecture \citep{bacon2017option}, which extends the Actor-Critic framework with three learnable components: an option policy $\pi_\Omega(\omega | s)$ that selects among high-level strategies, intra-option policies $\pi_{U|\omega}(a | s, \omega)$ that select primitive actions within each option, and termination functions $\beta_\omega(s)$ that determine when to end each option. The critic maintains separate value functions at both levels: $Q_\Omega(s, \omega)$ for option values and $Q_U(s, \omega, a)$ for intra-option values. The corresponding advantages are:
+\begin{align}
+  A^O(s, \omega) &= Q_\Omega(s, \omega) - V(s) && \text{(option-level)}, \label{eq:option_advantage} \\
+  A^U(s, \omega, a) &= Q_U(s, \omega, a) - Q_\Omega(s, \omega) && \text{(intra-option)}. \label{eq:intraoption_advantage}
+\end{align}
+
+Bourdon found that flat A2C outperforms the hierarchical Option-Critic architecture in this domain by a wide margin: flat policies achieve 98.7\% coverage with near-zero option collapse (OCI~0.3), while the best Option-Critic configuration reaches only 53.7\% coverage with persistent option collapse. This thesis therefore uses flat A2C as the primary agent for all experiments.
+
+% ----------------------------------------------------------------------------
+\subsection{User Simulators for Dialogue RL}
+\label{sec:bg_simulators}
+% ----------------------------------------------------------------------------
+
+Training an RL dialogue agent requires an environment that provides state observations and reward signals in response to the agent's actions. In the absence of live users, a \emph{user simulator} fills this role: it receives the agent's dialogue action, updates an internal model of the user's state, and returns an observation (e.g., a simulated utterance and engagement signal) that the agent uses to compute its next action and receive its reward.
+
+User simulators serve three practical purposes. They provide the volume of training episodes needed for RL convergence---Bourdon's experiments train for 1{,}000 episodes per condition, each spanning 30--50 turns, which would be infeasible with live visitors. They enable reproducibility: given a fixed random seed, the same agent actions produce the same visitor responses, allowing controlled comparison across conditions. And they allow manipulation of specific design dimensions (signal clarity, state dynamics, persona diversity) in ways that real visitors cannot be manipulated.
+
+Simulators introduce a trade-off between fidelity and learnability, though. A perfectly realistic simulator would reproduce the full variability of human behaviour, including noise, individual differences, and context-dependent responses---but this variability may make credit assignment impossible, preventing the agent from learning which actions improve engagement. A highly idealised simulator provides clean learning signals but may produce policies that fail to generalise to real visitors. \citet{bourdon2024thesis} frames this as a tension between two competing demands: the simulator must ``provide learnable signals with sufficient dynamic range that the agent can discover which actions improve engagement'' while avoiding being ``trivially solved by simple heuristics that do not generalize to real visitors'' (\S5.2).
+
+The main design dimensions of a dialogue simulator are its state representation (implicit versus explicit user states), transition dynamics (deterministic thresholds versus probabilistic transitions), signal clarity (overlapping versus separable observations per engagement level), and user diversity model (whether different user types differ qualitatively or just parametrically). These dimensions interact: explicit state modelling tends to produce clearer signals, while probabilistic transitions add ambiguity that may be more realistic but harder to learn from. The simulator fidelity ladder (SM-v1 through SM-v4) varies these dimensions one at a time to measure their individual and combined effects on policy learning.
+
+% ----------------------------------------------------------------------------
+\subsection{Reward Shaping}
+\label{sec:bg_reward_shaping}
+% ----------------------------------------------------------------------------
+
+Reward shaping augments the environment reward with an additional signal intended to guide learning. \citet{ng1999policy} proved that \emph{potential-based} reward shaping preserves the optimal policy. Formally, given a potential function $\Phi: \mathcal{S} \to \mathbb{R}$, the shaping reward is defined as:
+\begin{equation}
+  \label{eq:pbrs}
+  F(s, s') = \gamma \Phi(s') - \Phi(s).
+\end{equation}
+The shaped reward function $R'(s, a, s') = R(s, a) + F(s, s')$ is then guaranteed to yield the same set of optimal policies as the original $R(s, a)$. This is both a \emph{necessary} and \emph{sufficient} condition: any shaping function that preserves the optimal policy for all MDPs sharing the same state and action spaces must take this potential-based form. In practice, this means reward signals can be safely modified---as long as the modification is expressible as $\gamma \Phi(s') - \Phi(s)$, the agent will converge to the same optimal behaviour, potentially faster.
+
+Bourdon's engagement reward $\reng = w_e \cdot \dwell$ is non-negative for all states, meaning the agent receives positive reinforcement regardless of engagement level. A natural correction is to subtract a baseline:
+\begin{equation}
+  \label{eq:centred_reward_bg}
+  \reng' = w_e \cdot (\dwell - \bar{d}),
+\end{equation}
+where $\bar{d}$ is a running average of recent dwell times. If $\bar{d}$ can be expressed as a function of state---i.e., $\bar{d} = \Phi(s)$ for some potential function---then the correction is a special case of potential-based shaping and the policy-invariance guarantee of \citet{ng1999policy} applies. If $\bar{d}$ depends on quantities not captured in the state (e.g., the full history of dwell values), the correction alters the effective MDP and the guarantee no longer holds. \Cref{sec:meth_reward} analyses this distinction in detail for both the centred engagement reward and the broadened novelty reward.
+
+A complementary idea comes from intrinsic motivation. The Intrinsic Curiosity Module (ICM) of \citet{pathak2017curiosity} formalises novelty as the prediction error of a forward dynamics model: actions that lead to unpredicted state transitions receive higher intrinsic reward, pushing the agent to explore novel parts of the state space. ICM operates at a different level of abstraction than the reward corrections proposed here, but the underlying principle---that novelty signals should decay as states become familiar---motivates the staleness penalty in the broadened novelty reward (\Cref{sec:meth_reward}).
+
+% ----------------------------------------------------------------------------
+\subsection{Gaze and Eye-Tracking Fundamentals}
+\label{sec:bg_gaze}
+% ----------------------------------------------------------------------------
+
+Eye tracking provides a continuous, non-intrusive record of visual attention. In museum visits, gaze data can serve as a real-time proxy for engagement without interrupting the visitor's experience. Bourdon's system generates six gaze features, each capturing a different dimension of visual behaviour.
+
+\textbf{Dwell time} ($\dwell$) is the proportion of a turn that the visitor's gaze remains within the Area of Interest (AOI) corresponding to the current exhibit. Formally, with $W_t$ a rolling analysis window aligned to conversational turns and $T_{\mathrm{AOI}}$ the set of timestamps with gaze fixated within the exhibit AOI:
+\begin{equation}
+  \label{eq:dwell}
+  \dwell = \frac{|T_{\mathrm{AOI}} \cap W_t|}{|W_t|} \in [0, 1].
+\end{equation}
+Dwell time is the most robust of the six features: AOI-based dwell is relatively insensitive to small calibration drift and sampling noise, provided AOIs are defined consistently \citep{bourdon2024thesis}. It is the primary engagement signal in Bourdon's reward function.
+
+\textbf{Saccade span} is the average amplitude of eye movements (fixation jump distances) within a turn. Large spans mean the visitor's gaze is covering wide regions of the visual field; small spans suggest focused inspection of a localised area. The complication is that high saccade spans in museum contexts could indicate either active exploration or visual search for something more interesting, so the feature's relationship to engagement depends on context.
+
+\textbf{Gaze entropy} quantifies spatial dispersion of fixations across competing AOIs. Scattered attention across many scene regions produces high entropy; concentrated focus on one region produces low entropy. High entropy may reflect cognitive overload (too many competing stimuli), while low entropy is more consistent with deep engagement---though this is not a clean mapping.
+
+\textbf{Fixation change rate} counts gaze shifts between fixation targets within a turn. Frequent shifts may signal restlessness; infrequent shifts suggest sustained attention. Unlike dwell time (a proportion), this feature captures the \emph{temporal dynamics} of attention.
+
+\textbf{Dominant object ratio} is the proportion of total fixation time on the single most-attended object. It complements gaze entropy in a useful way: a visitor can have low entropy (concentrated gaze) but a low dominant object ratio if attention is split between two or three objects rather than one.
+
+\textbf{Gaze entry latency} is the time from the start of a turn to the visitor's first fixation on the exhibit AOI. Short latencies mean immediate visual engagement; long latencies suggest the visitor's attention is elsewhere. This may be especially useful for detecting the \emph{onset} of disengagement, where dwell time---which measures sustained attention---would lag behind.
+
+In Bourdon's current implementation, all six features are generated by the Sim8 simulator from persona-specific statistical distributions, but they are derived from dwell time and response type rather than independently modelled. This means that the features are correlated by construction, limiting the value of using them as independent signals. For \pillar{3} to produce meaningful results, the simulator improvements in \pillar{2} must include independent generation of gaze features---a dependency that the experimental design explicitly accounts for.
+
+% ----------------------------------------------------------------------------
+\subsection{Bourdon's Baseline System}
+\label{sec:bg_baseline}
+% ----------------------------------------------------------------------------
+
+Bourdon's system serves as the baseline for all work in this thesis. This subsection covers its knowledge base, state representation, action space, reward function, and two simulators.
+
+\subsubsection{Knowledge Base and State Representation}
+
+The knowledge base contains information about five Dutch Golden Age portrait exhibits, with a total of 21 facts (Areas of Interest). Each fact consists of 1--2 sentences averaging approximately 15 words, describing visually distinct elements of the exhibits (clothing, accessories, symbolic objects) with associated historical and artistic information.
+
+The state vector $s_t = [f_t, h_t, i_t, c_t]$ has four components. The focus vector $f_t$ is a one-hot encoding of the current exhibit (or a no-focus state), with dimensionality 6. The dialogue history vector $h_t$ concatenates exhibit completion ratios (facts mentioned per exhibit divided by total facts) and normalised option usage counts, with dimensionality 9. The intent embedding $i_t$ is computed by projecting the DialogueBERT encoding of the last visitor utterance through a fixed linear projection $P \in \mathbb{R}^{64 \times 768}$, yielding a 64-dimensional vector. The dialogue context $c_t$ applies the same projection to the average of DialogueBERT encodings from the last three exchanges, also yielding 64 dimensions. The total state dimensionality is $2n + 133$ for $n$ exhibits; with 5 exhibits, this gives 143 dimensions.
+
+\subsubsection{Action Space}
+
+The action space consists of eight primitive dialogue actions grouped into four high-level options:
+\begin{itemize}
+  \item \texttt{ExplainNewFact}: Present a new fact about the current exhibit (novelty reward).
+  \item \texttt{RepeatFact}: Restate a previously mentioned fact (engagement reward only).
+  \item \texttt{ClarifyFact}: Provide clarification on a previously mentioned fact (engagement reward only).
+  \item \texttt{AskOpinion}, \texttt{AskMemory}, \texttt{AskClarification}: Question variants that elicit visitor responses (engagement reward only).
+  \item \texttt{SuggestMove}: Offer to transition to a different exhibit (coverage reward).
+  \item \texttt{WrapUp}: Conclude the conversation (termination).
+\end{itemize}
+Action masking enforces dialogue coherence: \texttt{Conclude} is masked until at least 3 facts and 2 exhibits have been covered; \texttt{ExplainNewFact} is masked when all facts for an exhibit are exhausted; \texttt{RepeatFact} is masked when no facts have been mentioned.
+
+\subsubsection{Reward Function}
+\label{sec:bg_reward_fn}
+
+The baseline reward function combines two components:
+\begin{equation}
+  \label{eq:daniel_reward}
+  R_t = w_e \cdot \dwell + \alpha_{\mathrm{nov}} \cdot \bigl(|\Fused(t)| - |\Fused(t-1)|\bigr),
+\end{equation}
+where $w_e = 1.0$ is the engagement weight, $\dwell \in [0,1]$ is the normalised dwell time, $\alpha_{\mathrm{nov}} = 1.0$ is the novelty scale factor, and $\Fused(t)$ is the set of unique facts presented up to time~$t$. The baseline reward therefore ranges from $[0, 3.0]$ per turn (typically $[0.5, 2.5]$), with engagement contributing $[0, 1.0]$ and novelty contributing $[0, 2.0]$ (when up to 2 new facts are introduced per turn).
+
+An augmented reward function extends the baseline with four additional components: responsiveness ($w_{\mathrm{resp}} = 0.25$ for timely answers to visitor questions), transition insufficiency penalty ($-0.20$ when transitioning with fewer than 2 facts mentioned), conclude bonus ($w_{\mathrm{conclude}} = 0.2$ for broader museum coverage at wrap-up), and question-asking incentive ($w_{\mathrm{ask}} = 0.15$ for proactive question-asking). These auxiliary components are disabled in baseline configurations.
+
+Two structural properties of this reward function are central to \pillar{1} of this thesis:
+\begin{enumerate}
+  \item \textbf{Pathology 1 --- Asymmetric engagement reward}: Since $\dwell \in [0,1]$, the engagement reward $\reng = w_e \cdot \dwell \geq 0$ for all states. The agent receives positive reward at every turn, regardless of whether the visitor is highly engaged ($\dwell = 0.90$) or nearly disengaged ($\dwell = 0.10$). There is no penalty for losing attention, only a smaller positive reward.
+  \item \textbf{Pathology 2 --- Structural novelty bias}: Since $|\Fused(t)| \geq |\Fused(t-1)|$ (facts can only be added, never removed), the novelty reward $\rnov \geq 0$ always. Moreover, only \texttt{ExplainNewFact} can increase $|\Fused(t)|$, making this the only action that triggers the novelty component. This creates a direct structural incentive for \texttt{ExplainNewFact} dominance, which manifests as the 88.3\% option collapse observed in Bourdon's function-based SMDP experiments.
+\end{enumerate}
+
+\subsubsection{Simulators}
+\label{sec:bg_simulators_detail}
+
+Bourdon implements and evaluates two visitor simulators.
+
+\paragraph{Sim8 (Probabilistic Response Simulator).} Sim8 is a data-driven simulator adapted from a prior visitor simulator trained on VR-based museum interactions. It determines visitor response types (question, statement, acknowledgment, confusion, follow-up) based on agent behaviour and conversation context, with persona-specific tendencies modulated by Big Five personality traits (Agreeable, Conscientious, Neurotic). Its dwell ranges are drawn from overlapping distributions by response type: acknowledgment/follow-up $[0.75, 0.95]$, question $[0.40, 0.70]$, statement $[0.30, 0.60]$, confusion $[0.25, 0.50]$. The critical characteristic is that these ranges overlap substantially---a dwell value of 0.45 could indicate confusion or moderate curiosity---making credit assignment difficult.
+
+\paragraph{State Machine Simulator.} The State Machine is a theory-driven simulator designed specifically to address Sim8's signal ambiguity. It models visitor engagement as an explicit finite-state machine with nine states (ranging from \textsc{HighlyEngaged} to \textsc{Disengaged}), deterministic transition triggers, and non-overlapping dwell ranges. For example, \textsc{Engaged} produces dwell in $[0.75, 0.90]$, \textsc{Overloaded} in $[0.30, 0.45]$, and \textsc{Disengaged} in $[0.05, 0.15]$, with a 0.20 gap between positive and negative states. Each negative state has a specific recovery action: \texttt{ClarifyFact} recovers \textsc{Confused} at 90\% success, \texttt{AskQuestion} recovers \textsc{Overloaded} at 85\%, \texttt{SuggestMove} recovers \textsc{ReadyToMove} at 95\%. Anti-spam mechanisms prevent exploitative cycles: recovery fatigue reduces success rates by 15\% per recovery (maximum $-$45\%), and cumulative overload penalties lower the dwell floor by 0.05 per \textsc{Overloaded} episode.
+
+Under the State Machine, flat policies learn qualitatively different behaviour: 31.7\% \texttt{AskQuestion} usage (versus 4.4\% under Sim8), 35.8\% recovery action usage, and higher action entropy (1.45 versus 1.20). The learning algorithms are clearly capable of engagement-adaptive behaviour when given clear signals---Sim8's ambiguity prevents them from discovering these strategies. Simulator fidelity determines the \emph{ceiling} of what the agent can learn, which is the primary motivation for \pillar{2}.
+
+\subsubsection{Key Findings and Limitations}
+
+Bourdon's thesis produces five principal findings, numbered H1--H5. H1 shows that flat Actor-Critic policies outperform hierarchical Option-Critic policies by 45 percentage points in coverage, a gap that persists across 53 SMDP optimisation conditions. H2 shows that augmented reward components do not close this gap, with the best augmented configuration achieving only +2.6 pp over baseline at the cost of return stability. H3 shows that switching to the State Machine simulator produces qualitatively different behaviours (recovery actions, question-asking), demonstrating that signal quality is the primary bottleneck. H4 shows that compact state representations (23-dimensional dialogue-act classification replacing 143-dimensional DialogueBERT embeddings) maintain performance while providing 84\% dimensionality reduction. H5 shows that reward-aligned option design reduces option collapse from OCI~74.7 to OCI~2.1 within the SMDP framework, though even this best SMDP configuration remains 43.2 pp below the flat baseline.
+
+For this thesis, the most important limitations of Bourdon's work are: (1) the State Machine simulator, despite producing clearer signals, has the fidelity limitations described in \Cref{sec:problem_statement}; (2) the reward function pathologies have not been addressed by principled corrections grounded in reward shaping theory; (3) only dwell time is used despite six gaze features being available; (4) all experiments use $n \leq 3$ random seeds, limiting statistical power; and (5) the contribution of structured prompts versus RL learning has not been isolated through ablation. This thesis addresses limitations (1)--(3) through its three-pillar methodology, and addresses (4)--(5) through increased seed counts ($n \geq 5$, targeting $n = 10$ for the primary simulator comparison) and a prompt template ablation.
+
+% ============================================================================
+% Placeholder sections for rest of document
+% ============================================================================
+
+% ============================================================================
+\section{Literature Review}
+\label{sec:literature_review}
+% ============================================================================
+
+The review is organised around five threads: user simulator design for dialogue RL (\Cref{sec:lit_simulators}), reward shaping (\Cref{sec:lit_reward}), gaze and eye-tracking as engagement signals (\Cref{sec:lit_gaze}), Actor-Critic methods for dialogue (\Cref{sec:lit_actor_critic}), and museum guide agents (\Cref{sec:lit_museum}). Thread~1 receives the most detailed treatment, reflecting \pillar{2}'s status as the main contribution. \Cref{sec:lit_gaps} synthesises across threads to identify the gaps that motivate the three research questions.
+
+% ----------------------------------------------------------------------------
+\subsection{Thread 1: User Simulator Design for Dialogue RL}
+\label{sec:lit_simulators}
+% ----------------------------------------------------------------------------
+
+This thesis treats simulator fidelity not as a peripheral engineering concern but as a first-order research variable that determines the ceiling of what RL dialogue agents can learn. The evidence for this claim comes from four papers, reviewed below in a progression from foundational architectures through evaluation methodology to empirical evidence and alternative paradigms.
+
+\subsubsection{Foundational Simulator Architectures}
+
+\citet{li2016user} introduced the agenda-based user simulator for task-completion dialogues, which became the dominant paradigm in the field. Their simulator maintains an explicit user goal (inform slots and request slots) and an agenda---an ordered stack of dialogue acts the simulated user intends to perform. At each turn, the simulator pops acts from the agenda, responds to the system, and updates its internal state. An error model introduces noise by randomly substituting slot values, simulating recognition errors and misunderstandings.
+
+Two properties of this architecture matter here. First, it provides a structured, reproducible training environment that enables the thousands of episodes needed for RL convergence---the same practical motivation behind Bourdon's use of simulators. Second, the simulator's behaviour is fully determined by its design choices: the goal sampling distribution, the agenda update rules, and the error model parameters. These choices implicitly define what the RL agent can and cannot learn, because they determine the range and clarity of the feedback it receives.
+
+However, \citet{li2016user}'s simulator was built for slot-filling dialogues (e.g., booking a movie ticket), where user goals are well-defined and success is binary. Museum dialogue is different: there is no fixed user goal; engagement is continuous; and the visitor's internal state (engaged, confused, fatigued, curious) evolves gradually in response to the agent's actions rather than being determined by a static agenda. Bourdon's Sim8 and State Machine simulators adapt the general principle---a structured internal model producing contingent feedback---but replace the agenda with engagement state dynamics. The limitations of these adaptations motivate the simulator fidelity ladder.
+
+\subsubsection{Systematic Evaluation of Design Choices}
+
+Where \citet{li2016user} established \emph{what} to simulate, \citet{kreyssig2019neural} asked \emph{how}: which design decisions in a user simulator actually affect the quality of the dialogue policies trained on it?
+
+\citet{kreyssig2019neural} varied simulator design dimensions---transition structure, noise model, state representation---and measured the effect on RL policy quality. Not all components contributed equally: design choices affecting the clarity of user feedback had outsized effects, while the complexity of the user goal model mattered less than expected. They also introduced a cross-model evaluation methodology where policies trained on one simulator variant are tested on another, revealing whether simulator-specific behaviours transfer.
+
+The simulator fidelity ladder (SM-v1 through SM-v4) follows the same logic---vary design dimensions, measure policy effects---but applies it to engagement-based dialogue rather than slot-filling tasks. Their finding that design choices have differential effects motivates the incremental structure of the ladder, where each version adds one fidelity dimension (calibrated dwell ranges, cross-exhibit memory, persona dynamics) to isolate its contribution.
+
+One important difference: \citet{kreyssig2019neural} evaluate simulators in terms of task success rate, a binary metric. In museum dialogue, the relevant metrics are continuous (engagement, coverage, action diversity). Whether the design principles they identified for slot-filling simulators transfer to engagement-based settings---where the reward signal is continuous and noisy rather than sparse and binary---is an open question that this thesis partially addresses.
+
+\subsubsection{Empirical Evidence: Realism Drives Policy Quality}
+
+\citet{yang2023adversarial} provide the strongest quantitative evidence that more realistic simulators produce better dialogue policies. They use adversarial learning to train neural user simulators that more closely approximate real user behaviour, then train RL policies on these improved simulators. Policies trained on the adversarially improved simulator achieved 8.3\% higher task success than those trained on a standard simulator.
+
+This establishes a causal link between simulator realism and policy quality, not merely a correlation. The adversarial training reduces the distributional gap between simulator-generated and real-user dialogues, and the downstream policy improvement demonstrates that this reduction matters. If reducing the sim-to-real gap by even a modest amount produces measurable policy gains in task-oriented dialogue, then the fidelity improvements in the simulator ladder should produce analogous gains in the museum setting.
+
+\citet{yang2023adversarial}'s approach does require access to real user data for adversarial training---a resource unavailable in the museum guide setting, where live visitor interactions are expensive and scarce. The simulator ladder takes a different approach: rather than learning realism from data, it engineers realism through design choices grounded in museum learning literature (gradual engagement drift, cross-exhibit memory, persona-specific dynamics). Whether engineered realism produces comparable policy gains to learned realism is an empirical question addressed through the controlled comparison across SM-v1 through SM-v4.
+
+\subsubsection{Alternative Paradigm: Inverse Reinforcement Learning for Simulation}
+
+\citet{chandramohan2011user} take a different approach entirely: rather than hand-designing transition rules or learning them from supervised data, they use inverse reinforcement learning (IRL) to recover the user's implicit reward function from observed dialogues, then simulate users by optimising that recovered reward. This grounds the simulator's behaviour in inferred user preferences rather than researcher assumptions.
+
+IRL addresses a real weakness of rule-based simulators like Bourdon's State Machine: the designer must specify transition rules, recovery mechanics, and dwell ranges from domain knowledge, risking a simulator that reflects the designer's assumptions rather than real visitor behaviour. IRL sidesteps this by learning the user model from data. But IRL requires sufficient demonstration data from real users---data that is scarce in the museum setting.
+
+The simulator fidelity ladder takes a \emph{design-driven} approach instead, where each fidelity dimension is grounded in museum learning research (working memory limits for overload mechanics, variety-seeking behaviour for cross-exhibit memory, individual differences for persona profiles). IRL would be a natural complement in future work: once sufficient real visitor data is available, an IRL-based simulator could be compared against the design-driven versions.
+
+\subsubsection{Positioning: The Gap This Thesis Fills}
+
+Together, these four papers establish that simulator design matters (\citealp{kreyssig2019neural}), that realism improvements produce measurable policy gains (\citealp{yang2023adversarial}), and that alternative paradigms exist for grounding simulators in user data (\citealp{chandramohan2011user}). None of them address the specific setting of continuous engagement signals derived from gaze features in open-ended, non-slot-filling dialogue. \citet{li2016user} and \citet{kreyssig2019neural} work with binary task-completion; \citet{yang2023adversarial} require real user data; \citet{chandramohan2011user} use IRL in a slot-filling context. Bourdon's thesis is the only prior work on simulator design for engagement-based museum dialogue, but his comparison was limited to two simulators (Sim8 versus State Machine) that differ on multiple dimensions simultaneously, making it impossible to attribute policy differences to any specific design choice. The simulator fidelity ladder varies dimensions one at a time.
+
+% ----------------------------------------------------------------------------
+\subsection{Thread 2: Reward Shaping in Reinforcement Learning}
+\label{sec:lit_reward}
+% ----------------------------------------------------------------------------
+
+This thread reviews the theoretical and practical foundations for the bipolar reward reformulation in \pillar{1}, from policy-invariant reward shaping theory through its application to spoken dialogue and intrinsic motivation for exploration.
+
+\subsubsection{Theoretical Foundation: Potential-Based Reward Shaping}
+
+\citet{ng1999policy}'s result (reviewed in \Cref{sec:bg_reward_shaping}) is that potential-based shaping $F(s, s') = \gamma \Phi(s') - \Phi(s)$ is the unique form of reward augmentation that preserves the optimal policy across all MDPs with the same state-action structure. Any shaping function not expressible in this form risks altering the optimal policy.
+
+For \pillar{1}, this is both enabling and constraining. The centred engagement reward $\reng' = w_e \cdot (\dwell - \bar{d})$ decomposes into the original reward minus a baseline $w_e \cdot \bar{d}$. If $\bar{d}$ is a function of state, this is potential-based shaping and the policy-invariance guarantee applies. But the broadened novelty reward introduces a staleness penalty $-\beta \cdot \mathrm{staleness}(a_t)$ that depends on the action history, not just the current state. Action-dependent shaping is generally \emph{not} expressible in the potential-based form unless the action history is encoded in the state representation, so the staleness penalty carries a theoretical risk of policy alteration that must be monitored experimentally.
+
+There is a diagnostic implication too: if a reward modification produces different converged policies, the modification is not potential-based and has altered the effective MDP. So if the bipolar reward produces different policies from the baseline (which is the hoped-for outcome, given the pathologies being corrected), the improvement cannot be attributed purely to faster convergence toward the same optimum. It means the reward modification has changed what the agent considers optimal---which may be desirable (the original reward's non-negativity is itself a design flaw) but must be interpreted carefully.
+
+\subsubsection{Reward Shaping for Spoken Dialogue}
+
+\citet{su2015reward} apply reward shaping to spoken dialogue systems, where the standard reward is sparse---typically a single success/failure signal at the end of the dialogue. They use a recurrent neural network to learn a potential function $\Phi(s)$ from dialogue features, producing per-turn shaping signals that guide the policy toward states associated with successful outcomes. The learned shaping substantially accelerates policy learning without altering the converged policy (because it is potential-based by construction).
+
+Bourdon's baseline reward is not sparse (engagement provides per-turn feedback), but it is structurally uninformative in the negative direction---the agent never gets a signal that says ``this was bad.'' The centred engagement reward creates genuine negative values for below-baseline engagement, analogous to how \citet{su2015reward}'s shaping creates informative intermediate signals in a sparse-reward setting. The difference is that Su et al.\ learn their potential function from data, while this thesis defines it analytically as a running baseline.
+
+One limitation: their learned potential function requires a corpus of successful and unsuccessful dialogues. In the museum setting, there is no clear definition of dialogue ``success'' that could ground such learning. The analytical approach in \pillar{1} (subtracting a running average) avoids this data dependency but sacrifices adaptiveness.
+
+\subsubsection{Intrinsic Motivation and Curiosity-Driven Exploration}
+
+\citet{pathak2017curiosity} introduce the Intrinsic Curiosity Module (ICM), which formalises novelty as intrinsic reward. A forward dynamics model predicts the next state given the current state and action; prediction error is the intrinsic reward, with high error indicating a novel transition. This reward decays naturally as the forward model improves---initially surprising states become predictable.
+
+ICM provides a conceptual foundation for the broadened novelty reward in \pillar{1}. Bourdon's novelty reward $\rnov = \alpha_{\mathrm{nov}} \cdot (|\Fused(t)| - |\Fused(t-1)|)$ rewards only one form of novelty---introducing new facts---and cannot decay (facts remain in $\Fused$ permanently). The staleness penalty reduces the effective novelty reward when the agent repeats the same action type, implementing a crude form of the habituation that ICM achieves through forward model learning. The principle is the same: novelty signals should diminish for familiar actions, preventing exploitation of a single action type.
+
+Applying ICM directly to museum dialogue would require defining a forward model over dialogue states, which is non-trivial when the state includes high-dimensional embeddings and transition dynamics are partly determined by a stochastic simulator. The staleness penalty is simpler and more interpretable, though it may sacrifice some aspects of the curiosity-driven framework.
+
+\subsubsection{Gap: Engagement-Specific Reward Pathologies}
+
+None of these papers address the specific pathologies in Bourdon's system: the structural non-negativity of engagement reward and the structural \texttt{ExplainNewFact} bias of novelty reward. \citet{ng1999policy} provide the theoretical tools for safe reward modification; \citet{su2015reward} demonstrate practical reward shaping for dialogue; \citet{pathak2017curiosity} offer a framework for novelty signals that decay. This thesis combines insights from all three: a centred engagement reward grounded in potential-based shaping theory, and a broadened novelty reward built on the principle that novelty should diminish for familiar actions.
+
+% ----------------------------------------------------------------------------
+\subsection{Thread 3: Gaze and Eye-Tracking as Engagement Signals}
+\label{sec:lit_gaze}
+% ----------------------------------------------------------------------------
+
+This thread reviews evidence that gaze features carry engagement information beyond what dwell time alone captures, motivating the comparison study in \pillar{3}.
+
+\subsubsection{Gaze Patterns in Museum Contexts}
+
+\citet{milekic2025museum} study real museum visitor gaze patterns using both fixed and mobile eye-tracking systems, documenting how visitors distribute visual attention across artworks and how fixation patterns relate to interest. They find systematic differences between high-engagement and low-engagement visitors in fixation duration, saccade patterns, and gaze spatial distribution.
+
+Their real-world data confirms that the gaze features in Bourdon's system---dwell time, saccade span, gaze entropy, fixation change rate---capture meaningful aspects of visitor engagement in actual museum settings, not just in laboratory or VR contexts. But their study is observational: they analyse gaze patterns \emph{after the fact} rather than using them for real-time policy adaptation.
+
+\citet{milekic2025museum} also do not break down which individual gaze features are most informative for distinguishing engagement states; they treat gaze as a holistic phenomenon. \pillar{3} fills this gap by comparing features individually and in combination as RL engagement signals.
+
+\subsubsection{Gaze Features as Cognitive State Indicators}
+
+The CLARE framework \citep{clare2024} shows that gaze features---pupil dilation, fixation duration, and saccade rate---are reliable indicators of cognitive load and engagement in real-time interactive settings. CLARE uses multimodal data (including gaze) to assess cognitive load as it happens, rather than retrospectively, and finds that gaze features carry independent information about the user's cognitive state beyond what any single feature captures.
+
+If different gaze features really do capture different aspects of cognitive engagement, as CLARE suggests, then combining them should let the RL agent distinguish between qualitatively different visitor states. For example, focused deep engagement (low entropy, high dwell, low fixation change rate) should look different from confused scanning (high entropy, moderate dwell, high fixation change rate).
+
+CLARE operates in a different context (general interactive tasks) than museum dialogue, where the relevant cognitive states are engagement, confusion, fatigue, and curiosity rather than general cognitive load. Whether the discriminative power of gaze features transfers to this setting is what \pillar{3} tests.
+
+\subsubsection{Gap: No Systematic Comparison for RL Dialogue}
+
+Multiple eye-tracking features capture meaningful aspects of engagement and cognitive state, but no prior work has compared individual and combined gaze features as engagement signals for RL policy learning. Existing work either analyses gaze descriptively \citep{milekic2025museum} or uses it for classification \citep{clare2024}, without closing the loop by feeding features into an RL reward function and measuring policy quality. This thesis provides the first such comparison.
+
+% ----------------------------------------------------------------------------
+\subsection{Thread 4: Actor-Critic Methods for Dialogue Management}
+\label{sec:lit_actor_critic}
+% ----------------------------------------------------------------------------
+
+\citet{chen2017sample} adapt Actor-Critic methods for dialogue management, incorporating supervised data to improve sample efficiency and showing that trust region and natural gradient techniques stabilise policy updates in high-dimensional, noisy-reward dialogue settings. This makes A2C a well-grounded choice for the dialogue policy optimisation in Bourdon's codebase.
+
+\citet{kumar2025continuous} use A2C specifically for engagement-adaptive conversational agents, optimising dialogue actions via engagement and value delivery metrics. They find that A2C can learn personalised strategies that adapt to individual user engagement patterns---a close parallel to this thesis's setup.
+
+These two works---\citet{chen2017sample} on A2C for dialogue generally, \citet{kumar2025continuous} on A2C for engagement-adaptive interaction---validate the choice of flat A2C as the primary architecture. The question this thesis addresses is not whether A2C \emph{can} learn engagement-adaptive policies (Bourdon's H3 results already show it can), but whether its learning is constrained by the quality of the simulator, reward, and engagement signal it receives.
+
+% ----------------------------------------------------------------------------
+\subsection{Thread 5: Museum Guide Agents and Engagement-Adaptive Dialogue}
+\label{sec:lit_museum}
+% ----------------------------------------------------------------------------
+
+Museum guide agents have a history stretching back to early embodied conversational agents. Early systems relied on hand-authored rules and scripted interactions---interpretable but inflexible. Bourdon's system is a step toward learned policies, but the limitations he identified (option collapse, non-negative rewards, low-fidelity simulators) show that the RL approach has not yet delivered on its promise here.
+
+\citet{potdar2025aura} show that engagement-adaptive RL dialogue is an active area beyond museum settings. Their AURA framework frames within-session engagement adaptation as an RL problem with a multi-dimensional quality reward, applied to conversational surveys. The domain differs, but the underlying problem is analogous: adapting dialogue strategy in real time based on engagement signals while balancing information gathering with user experience. AURA's multi-dimensional reward (engagement, response quality, survey completion) parallels this thesis's combination of engagement and novelty.
+
+\citet{chen2022survey} survey RL methods for task-oriented dialogue policy learning, identifying user simulation, reward design, and sample efficiency as central challenges---confirming that the three bottlenecks addressed here are widely recognised in the field, not specific to museum dialogue.
+
+% ----------------------------------------------------------------------------
+\subsection{Summary and Research Gaps}
+\label{sec:lit_gaps}
+% ----------------------------------------------------------------------------
+
+Three gaps emerge from this review.
+
+\textbf{Gap 1: No controlled study of simulator fidelity for engagement-based dialogue RL.} Design choices affect policy quality \citep{kreyssig2019neural} and more realistic simulators produce better policies \citep{yang2023adversarial}, but all evidence comes from task-completion settings with binary success metrics. No prior work has varied simulator fidelity dimensions and measured the effect on policies trained with continuous engagement signals. Bourdon's Sim8-versus-State-Machine comparison provides suggestive evidence, but confounds multiple design dimensions. The simulator fidelity ladder isolates individual dimensions in a controlled progression. $\to$ \researchq{1}.
+
+\textbf{Gap 2: No principled correction of non-negative reward pathologies in engagement reward functions.} The tools exist: potential-based shaping theory \citep{ng1999policy}, practical reward shaping for dialogue \citep{su2015reward}, and decaying novelty signals \citep{pathak2017curiosity}. But no one has applied them to the specific pathologies of non-negative engagement rewards---the absence of negative signals for attention loss, and the structural bias toward a single action type. Bourdon's H2 results show that ad-hoc reward augmentation does not help; this thesis proposes corrections grounded in reward shaping theory. $\to$ \researchq{2}.
+
+\textbf{Gap 3: No comparison of gaze features as RL engagement signals.} Multiple eye-tracking features capture meaningful engagement information \citep{milekic2025museum,clare2024}, but no prior work has tested whether this translates into better RL learning signals. Bourdon's system generates six gaze features but uses only dwell time. $\to$ \researchq{3}.
+
+These gaps interact. Gap~1 and Gap~3: meaningful gaze feature comparison requires a simulator that generates features with independent information content. Gap~1 and Gap~2: a higher-fidelity simulator may amplify or attenuate the effects of reward reformulation. The three-pillar design accounts for this by addressing simulator fidelity first (\pillar{2}), then using the best-performing simulator as the testbed for \pillar{1} and \pillar{3}.
+
+\section{Methodology}
+\label{sec:methodology}
+\textit{[To be written.]}
+
+\section{Experimental Design}
+\label{sec:experiments}
+\textit{[To be written.]}
+
+\section{Expected Contributions}
+\label{sec:contributions}
+\textit{[To be written.]}
+
+\section{Timeline}
+\label{sec:timeline}
+\textit{[To be written.]}
+
+\section{Risks and Mitigations}
+\label{sec:risks}
+\textit{[To be written.]}
+
+% ============================================================================
+% References
+% ============================================================================
+\newpage
+\bibliography{references_1}
+
+\end{document}

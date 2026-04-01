@@ -6,15 +6,19 @@ Simulator Factory
 Provides a factory function to create simulators based on type:
 - sim8: Original Sim8Simulator with persona behavior and gaze synthesis
 - state_machine: New StateMachineSimulator with literature-grounded state machine
+- hybrid: HybridSimulator combining state machine backbone + sim8 engagement dynamics
 
 Usage:
     from src.simulator import get_simulator
-    
+
     # Original simulator
     simulator = get_simulator("sim8", knowledge_graph=kg)
-    
+
     # State machine simulator
     simulator = get_simulator("state_machine", knowledge_graph=kg)
+
+    # Hybrid simulator (stochasticity controls sim8 influence: 0.0-1.0)
+    simulator = get_simulator("hybrid", knowledge_graph=kg, stochasticity=0.5)
 """
 
 from typing import Optional, List
@@ -59,6 +63,16 @@ def get_simulator(
             seed=seed,
             **kwargs
         )
+    elif simulator_type == "hybrid":
+        from .hybrid_simulator import HybridSimulator
+        stochasticity = kwargs.pop("stochasticity", 0.5)
+        return HybridSimulator(
+            knowledge_graph=knowledge_graph,
+            exhibits=exhibits,
+            seed=seed,
+            stochasticity=stochasticity,
+            **kwargs
+        )
     elif simulator_type == "sim8_original":
         from .sim8_original_adapter import Sim8OriginalSimulator
         from pathlib import Path
@@ -80,7 +94,7 @@ def get_simulator(
     else:
         raise ValueError(
             f"Unknown simulator type: '{simulator_type}'. "
-            f"Valid options: 'sim8', 'sim8_original', 'state_machine'"
+            f"Valid options: 'sim8', 'sim8_original', 'state_machine', 'hybrid'"
         )
 
 

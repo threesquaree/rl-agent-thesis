@@ -181,6 +181,29 @@ def _build_subaction_availability(
     return availability
 
 
+# Canonical ordering of response types (must match env.py)
+RESPONSE_TYPE_LABELS = ["acknowledgment", "follow_up_question", "question", "statement", "confusion", "silence"]
+
+
+def _build_response_type_vector(response_type: str) -> np.ndarray:
+    """
+    Build one-hot response type vector (6-d).
+
+    Args:
+        response_type: Visitor's response type classification
+
+    Returns:
+        One-hot vector of shape (6,)
+    """
+    onehot = np.zeros(len(RESPONSE_TYPE_LABELS), dtype=np.float32)
+    if response_type in RESPONSE_TYPE_LABELS:
+        onehot[RESPONSE_TYPE_LABELS.index(response_type)] = 1.0
+    else:
+        # Default to "statement" for unknown types
+        onehot[RESPONSE_TYPE_LABELS.index("statement")] = 1.0
+    return onehot
+
+
 def build_state(
     user_message: str,
     exhibit: str,
@@ -192,18 +215,20 @@ def build_state(
     turn_number: int,
     projection_matrix: Optional[np.ndarray] = None,
     bert_recognizer = None,
-    include_availability: bool = False
+    include_availability: bool = False,
+    response_type: Optional[str] = None
 ) -> np.ndarray:
     """
     Build complete state vector for inference.
-    
+
     State components (matching env.py _get_obs()):
     1. Focus vector: (n_exhibits + 1)-d one-hot
     2. History vector: (n_exhibits + n_options)-d (coverage + usage)
-    3. Intent embedding: 64-d (DialogueBERT 768→64 projection)
-    4. Context embedding: 64-d (DialogueBERT 768→64 projection)
+    3. Intent embedding: 64-d (DialogueBERT 768->64 projection)
+    4. Context embedding: 64-d (DialogueBERT 768->64 projection)
     5. Subaction availability: 4-d binary indicators
-    
+    6. Response type: 6-d one-hot (optional, when response_type is provided)
+
     Args:
         user_message: User's current utterance
         exhibit: Current exhibit name
@@ -215,42 +240,49 @@ def build_state(
         turn_number: Current turn number
         projection_matrix: Optional pre-computed projection matrix
         bert_recognizer: Optional pre-initialized DialogueBERT recognizer
-        
+        include_availability: Whether to include subaction availability indicators
+        response_type: Optional visitor response type for one-hot encoding
+
     Returns:
         Complete state vector as numpy array
     """
     # Initialize helpers if not provided
     if projection_matrix is None:
         projection_matrix = get_projection_matrix()
-    
+
     if bert_recognizer is None:
         bert_recognizer = get_dialoguebert_recognizer()
-    
+
     # Get exhibit information
     exhibit_names = knowledge_graph.get_exhibit_names()
     n_exhibits = len(exhibit_names)
-    
+
     # Get exhibit index (0-indexed)
     if exhibit in exhibit_names:
         exhibit_idx = exhibit_names.index(exhibit)
     else:
         exhibit_idx = -1  # No focus
-    
+
     # Build each component
     focus = _build_focus_vector(exhibit_idx, n_exhibits)
     history = _build_history_vector(facts_mentioned, knowledge_graph, option_counts, n_exhibits, options)
     intent_64 = _build_intent_embedding(user_message, turn_number, bert_recognizer, projection_matrix)
     context_64 = _build_context_embedding(dialogue_history, bert_recognizer, projection_matrix)
-    
+
     # Concatenate base components
     state_components = [focus, history, intent_64, context_64]
-    
+
     # Add availability indicators only if requested (for newer models)
     if include_availability:
         availability = _build_subaction_availability(exhibit, knowledge_graph, facts_mentioned)
         state_components.append(availability)
-    
+
+    # Add response type one-hot if provided (for models trained with response type feature)
+    if response_type is not None:
+        response_type_vec = _build_response_type_vector(response_type)
+        state_components.append(response_type_vec)
+
     # Concatenate into final state vector
     state = np.concatenate(state_components).astype(np.float32)
-    
+
     return state

@@ -138,6 +138,7 @@ class HRLTrainingLoop:
                  save_map_frames: bool = False, live_map_display: bool = False,
                  map_interval: int = 50, verbose: bool = False,
                  simulator_type: str = "sim8",
+                 stochasticity: float = 0.5,
                  termination_strategy: str = "learned",
                  state_representation: str = "dialoguebert",
                  option_granularity: str = "medium",
@@ -240,7 +241,8 @@ class HRLTrainingLoop:
         self.simulator_type = simulator_type
         self.simulator = get_simulator(
             simulator_type=simulator_type,
-            knowledge_graph=self.knowledge_graph
+            knowledge_graph=self.knowledge_graph,
+            stochasticity=stochasticity,
         )
         if simulator_type != "sim8":
             print(f"[Training] Using simulator: {simulator_type}")

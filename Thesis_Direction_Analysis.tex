@@ -1,0 +1,301 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage[table]{xcolor}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    citecolor=blue!60!black,
+    urlcolor=blue!60!black
+}
+
+\title{Thesis Direction Analysis}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Context}
+
+\textbf{Original proposal:} Bipolar reward reformulation --- redesigning the non-negative reward signal to produce genuine positive and negative values.
+
+\textbf{Revised direction:} After discussion with Daniel, the scope shifted toward a more balanced, three-pronged approach:
+
+\begin{enumerate}
+    \item Simple reward penalty + broadened novelty (scaled-down version of original proposal)
+    \item Simulator improvement (new main direction)
+    \item Multi-feature gaze representations (exploratory comparison)
+\end{enumerate}
+
+\textbf{Assessment:} This is a stronger thesis direction.
+
+
+\section{Why the Pivot Makes Sense}
+
+The original proposal was deeply focused on a single hypothesis: bipolar reward signals are necessary for effective policy learning. This is a clean theoretical contribution but carries a significant risk --- Daniel's own experiments already showed that reward engineering alone doesn't close the 43.2\,pp gap (H2 results). His thesis explicitly concludes:
+
+\begin{quote}
+``Reward augmentation fails not because rewards are wrong, but because the architecture cannot leverage them effectively.''\\
+--- Daniel's thesis, \S9.3
+\end{quote}
+
+Building an entire thesis around a more sophisticated version of something Daniel already tried (and showed has limits) is risky. The revised direction acknowledges this and shifts focus to the bottleneck Daniel himself identified as most impactful: simulator signal quality (\S9.4).
+
+
+\section{Pillar-by-Pillar Analysis}
+
+\subsection{Pillar 1: Reward Penalty + Broadened Novelty}
+
+\textbf{What was proposed:} Centred engagement reward + broadened novelty reward.
+
+\textbf{Suggestion:} Keep this, but scope it down to a supporting contribution, not the main thesis.
+
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{l c X}
+\toprule
+\textbf{Component} & \textbf{Include?} & \textbf{Rationale} \\
+\midrule
+Centred engagement reward (Eq.~3) & Yes & Simple, principled, policy-invariant. Easy to implement and test. \\
+\addlinespace
+Threshold-based engagement (Eq.~4) & Drop & Adds complexity without clear advantage over centred version. The $w^+ \neq w^-$ case breaks policy invariance and creates a tuning burden. \\
+\addlinespace
+Broadened novelty (Eq.~5) & Yes & Directly addresses Pathology~2 (ExplainNewFact dominance). The staleness penalty is well-motivated. \\
+\addlinespace
+Policy-invariance analysis (\S7, RQ4) & Simplify & Keep as a paragraph in methodology, not an entire research question. The theoretical analysis is correct but not novel enough to be a standalone contribution. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Net effect:} One chapter with a clean experiment showing whether centred engagement + broadened novelty improve OCI and coverage. This gives a concrete comparison baseline for Pillar~2.
+
+
+\subsection{Pillar 2: Simulator Improvement (Main Direction)}
+
+This is where the thesis contribution should live. Daniel's thesis is clear about this:
+
+\begin{quote}
+``Signal quality fundamentally determines what behaviors agents can learn, not just how fast they learn.''\\
+--- Daniel's thesis, \S9.4
+\end{quote}
+
+\subsubsection{Current State Machine Limitations}
+
+\begin{enumerate}
+    \item \textbf{Binary transition logic:} States transition deterministically based on simple action counters (e.g., 3+ consecutive ExplainNewFact $\rightarrow$ OVERLOADED). Real engagement doesn't work this way --- it's gradual, cumulative, and context-dependent.
+
+    \item \textbf{No visitor memory across exhibits:} The simulator resets conversation-level counters when transitioning exhibits. A visitor who was overwhelmed at Exhibit~1 starts fresh at Exhibit~2 --- unrealistic.
+
+    \item \textbf{No persona-grounded engagement dynamics:} The three persona profiles (Explorer, Focused, Impatient) only modulate thresholds. They don't alter the fundamental state machine structure, transition probabilities, or dwell distributions. A real ``curious expert'' vs.\ ``casual browser'' would have fundamentally different engagement trajectories.
+
+    \item \textbf{Recovery is too mechanical:} Recovery rates are hard-coded (e.g., ClarifyFact recovers CONFUSED at 90\%). The agent cannot learn how well it's recovering --- only that recovery either succeeds or fails.
+
+    \item \textbf{Single-modality engagement:} Only dwell time is used. The simulator generates gaze features (saccade, entropy, etc.) but these are derived from dwell time, not independently modelled.
+
+    \item \textbf{No temporal dynamics:} Engagement doesn't naturally drift. The visitor stays ENGAGED forever unless specific action-count thresholds are triggered.
+\end{enumerate}
+
+\subsubsection{Suggested Simulator Improvements --- Ordered by Impact}
+
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Priority} & \textbf{Improvement} & \textbf{Why} \\
+\midrule
+High & Add gradual engagement drift & More realistic than binary threshold triggers. Enables the agent to learn proactive engagement maintenance. \\
+\addlinespace
+High & Probabilistic state transitions & Replace ``3+ ExplainNewFact $\rightarrow$ OVERLOADED'' with a probability that increases with consecutive explains. More realistic and creates a richer learning signal. \\
+\addlinespace
+Medium & Cross-exhibit visitor memory & Enables the agent to learn pacing strategies across the full conversation, not just per-exhibit. \\
+\addlinespace
+Medium & Persona-specific engagement trajectories & Different personas should have different state machines or transition graphs, not just different threshold values. \\
+\addlinespace
+Medium & Richer recovery model & Instead of binary success/failure, recovery should be graduated --- ``mostly recovered'' vs.\ ``fully recovered''. \\
+\addlinespace
+Low & Time-dependent engagement & Captures museum fatigue --- visitors lose focus over a 30-minute conversation regardless of content quality. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Key research contribution:} You can systematically vary simulator features and measure which ones most affect agent learning. This is a controlled experiment on simulator design, which is a genuinely novel contribution that neither Daniel nor the broader dialogue RL literature has properly done.
+
+\subsubsection{Suggested Experimental Design for Pillar 2}
+
+Create a simulator improvement ladder:
+
+\begin{enumerate}
+    \item \textbf{Baseline:} Current State Machine (as-is)
+    \item \textbf{SM-v2:} Add gradual drift
+    \item \textbf{SM-v3:} SM-v2 + probabilistic transitions + cross-exhibit memory
+    \item \textbf{SM-v4:} SM-v3 + persona-specific trajectories
+\end{enumerate}
+
+Train the flat Actor-Critic on each, measuring:
+
+\begin{itemize}
+    \item Coverage, OCI, policy entropy (inherited from Daniel)
+    \item Recovery action usage rate
+    \item Engagement correlation (dwell--action Spearman $\rho$)
+    \item Behavioural diversity (proportion of unique action sequences)
+\end{itemize}
+
+This gives a clean story: ``Simulator fidelity improvements produce more engagement-adaptive agent policies.''
+
+
+\subsection{Pillar 3: Multi-Feature Gaze Representations}
+
+Daniel explicitly called this out:
+
+\begin{quote}
+``Future work should explore multi-feature gaze representations that combine multiple eye-tracking metrics for richer engagement estimation.''\\
+--- Daniel's thesis, \S10
+\end{quote}
+
+The current code generates 6 gaze features (DwellTime, SaccadeSpan, TurnGazeEntropy, TurnFixChangeRate, DominantObjectRatio, GazeEntryLatency) but only DwellTime is used as the engagement signal. This is a missed opportunity.
+
+\subsubsection{Suggested Approach}
+
+\begin{enumerate}
+    \item \textbf{Feature comparison study:} Use each gaze feature individually as the engagement signal and compare agent learning. Which feature produces the best learning signal?
+
+    \item \textbf{Feature combination:} Test whether combining features (e.g., weighted average, or a learned combination) outperforms any single feature.
+
+    \item \textbf{Feature importance analysis:} Use techniques like permutation importance or SHAP on the learned policy to determine which gaze features the agent actually uses.
+\end{enumerate}
+
+\textbf{Scoping note:} The simulator currently derives all gaze features from dwell time (they're not independently generated). For this pillar to be meaningful, the simulator needs to be modified to generate gaze features that carry independent information --- otherwise you're just testing transformations of the same signal.
+
+This is a good complementary study but probably not enough for a standalone contribution. Pair it with Pillar~2: as the simulator is improved, also improve the gaze feature generation.
+
+
+\section{Addressing Key Limitations from Daniel's Thesis}
+
+Daniel's Chapter~10 identifies several limitations ranked by impact. Two high-priority limitations are directly addressable within this thesis direction and should be incorporated into the experimental design.
+
+\subsection{Prompt Template Confound --- Ablation Study}
+
+Daniel ranks this limitation as \textbf{High} priority (\S10.2):
+
+\begin{quote}
+``Structured prompts provide temporal coherence independent of the RL architecture, creating a potential confound in interpreting results. We cannot fully isolate whether flat policy success stems primarily from RL learning or from the prompt structure imposing appropriate behavior.''\\
+--- Daniel's thesis, \S10.2
+\end{quote}
+
+This confound carries directly into the simulator improvement work. If we improve the simulator and observe better policies, a reviewer can legitimately ask: \textit{``Is the RL agent learning more adaptive behaviour, or are the structured prompts doing the work regardless of the simulator?''}
+
+\textbf{Proposed ablation:} Run the best-performing improved simulator (e.g., SM-v4) under two conditions:
+
+\begin{enumerate}
+    \item \textbf{With structured prompts} (slot-filled prompt headers as in Daniel's design)
+    \item \textbf{Without structured prompts} (minimal prompts with no temporal coherence scaffolding)
+\end{enumerate}
+
+\noindent Compare coverage, OCI, recovery action usage, and engagement correlation across both conditions. If the simulator improvement produces better policies \textit{even without} structured prompts, the RL contribution is cleanly isolated. If the improvement vanishes without prompts, it reveals an important interaction effect between simulator fidelity and prompt engineering that is itself a finding worth reporting.
+
+This ablation is low-cost (two additional training runs) and directly addresses a High-priority limitation that Daniel could not resolve.
+
+
+\subsection{Statistical Robustness --- Increased Seed Count}
+
+Daniel ranks small sample sizes as \textbf{High} priority (\S10.2.1):
+
+\begin{quote}
+``Our experiments use $n \leq 3$ random seeds per condition. [\ldots] Henderson et al.\ (2018) emphasize the importance of multiple seeds ($n \geq 5$) for reliable reinforcement learning evaluation, noting that RL algorithms exhibit high variance across random seeds.''\\
+--- Daniel's thesis, \S10.2.1
+\end{quote}
+
+With $n \leq 3$, Daniel could only report descriptive comparisons and effect sizes, not statistically validated differences. This limits the strength of any claims about whether one simulator version produces better policies than another --- exactly the comparison at the heart of this thesis.
+
+\textbf{Proposed protocol:} All experiments in this thesis will use a minimum of $n = 5$ random seeds per condition, following the recommendation of Henderson et al.\ (2018). For the primary simulator ladder comparison (SM-v1 through SM-v4), $n = 10$ seeds will be targeted where computationally feasible. This enables:
+
+\begin{itemize}
+    \item Robust confidence intervals for all reported metrics
+    \item Standard statistical significance testing (e.g., Welch's $t$-test or Mann--Whitney $U$) between simulator versions
+    \item Meaningful variance analysis to distinguish genuine simulator effects from seed-level noise
+\end{itemize}
+
+\noindent The increased seed count is particularly important for the simulator ladder, where differences between adjacent versions (e.g., SM-v2 vs.\ SM-v3) may be more subtle than the large gaps Daniel observed between Sim8 and State Machine. Without sufficient statistical power, these incremental effects could be lost in noise.
+
+
+\section{Revised Research Questions}
+
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{l X l}
+\toprule
+\textbf{RQ} & \textbf{Question} & \textbf{Maps to} \\
+\midrule
+RQ1 & How does the fidelity of the visitor simulator affect the emergence of engagement-adaptive dialogue policies? & Pillar 2 (main) \\
+\addlinespace
+RQ2 & Do bipolar reward signals (centred engagement + broadened novelty) improve policy diversity and coverage compared to the non-negative baseline? & Pillar 1 (supporting) \\
+\addlinespace
+RQ3 & Which gaze features, individually and in combination, provide the most informative engagement signal for RL policy learning? & Pillar 3 (exploratory) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+\section{Revised Timeline Suggestion (17 weeks)}
+
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{l X c}
+\toprule
+\textbf{Phase} & \textbf{Tasks} & \textbf{Duration} \\
+\midrule
+Literature review & Simulator design literature, gaze feature literature, updated reward shaping & 2 weeks \\
+\addlinespace
+Simulator analysis & Document current SM limitations, design improvement ladder & 1 week \\
+\addlinespace
+Implementation & SM-v2 through SM-v4, reward changes, multi-feature gaze & 4 weeks \\
+\addlinespace
+Experiments & Simulator ladder $\times$ reward conditions, gaze feature comparison, prompt ablation & 3 weeks \\
+\addlinespace
+Analysis \& writing & Results, discussion, thesis draft & 5 weeks \\
+\addlinespace
+Revision \& submission & Supervisor feedback, final version & 2 weeks \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+\section{Key Risks \& Mitigations}
+
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{X c X}
+\toprule
+\textbf{Risk} & \textbf{Severity} & \textbf{Mitigation} \\
+\midrule
+Too many variables to test (simulator $\times$ reward $\times$ gaze) & Medium & Prioritise simulator improvements; use reward and gaze as secondary axes \\
+\addlinespace
+Multi-feature gaze is meaningless if features are derived from dwell & Medium & Redesign gaze feature generation first, before running comparison experiments \\
+\addlinespace
+Scope creep: 3 pillars is ambitious for a master's thesis & Medium & Pillar~2 is the thesis. Pillars~1 and~3 are supporting contributions that strengthen the story. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+\section{Summary Recommendation}
+
+The revised direction is better than the original. The shift from ``reward function is the problem'' to ``simulator quality is the bottleneck'' is well-supported by Daniel's own evidence. The three-pillar structure gives depth (Pillar~2) with breadth (Pillars~1,~3), and every pillar produces concrete, measurable results.
+
+The original proposal risked building elaborate reward mathematics only to find that the simulator can't provide the signal quality needed to test them --- exactly the problem Daniel ran into. The revised direction attacks the simulator first, then uses reward improvements and gaze features to amplify whatever gains the simulator improvements produce.
+
+By additionally addressing the prompt template confound through a targeted ablation and strengthening statistical robustness with $n \geq 5$ seeds, this thesis directly resolves two of the highest-priority limitations Daniel identified --- producing results that are both more interpretable and more defensible than the prior work.
+
+\end{document}
