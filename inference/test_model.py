@@ -20,6 +20,7 @@ from model_loader import load_model_checkpoint, create_agent_from_checkpoint
 from state_builder import build_state, get_projection_matrix
 from src.utils.knowledge_graph import SimpleKnowledgeGraph
 from src.utils.dialoguebert_intent_recognizer import get_dialoguebert_recognizer
+from silence_handler import SilenceHandler, ConversationSnapshot
 
 
 def load_trained_model(
@@ -353,5 +354,78 @@ def test_conversation(
         # Track mentioned facts (simplified - would need LLM response parsing in full version)
         # For now, just update turn number
         turn_number += 1
-    
+
     return results
+
+
+def get_agent_response_with_silence(
+    agent,
+    user_message: Optional[str],
+    exhibit: str,
+    dialogue_history: List[Tuple[str, str, int]],
+    knowledge_graph: SimpleKnowledgeGraph,
+    options: List[str],
+    subactions: Dict[str, List[str]],
+    facts_mentioned: Dict[str, set],
+    option_counts: Dict[str, int],
+    turn_number: int,
+    projection_matrix: np.ndarray,
+    bert_recognizer,
+    silence_handler: SilenceHandler,
+    current_time: float,
+    last_agent_option: str = "",
+    last_agent_subaction: str = "",
+    state_dim: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Wrapper around get_agent_response that checks for visitor silence first.
+
+    If user_message is not None, notifies the silence handler and runs normal inference.
+    If user_message is None, checks for silence override.
+
+    Returns the same dict as get_agent_response, plus 'silence_triggered': bool.
+    """
+    if user_message is not None:
+        silence_handler.notify_visitor_spoke(current_time)
+        result = get_agent_response(
+            agent=agent,
+            user_message=user_message,
+            exhibit=exhibit,
+            dialogue_history=dialogue_history,
+            knowledge_graph=knowledge_graph,
+            options=options,
+            subactions=subactions,
+            facts_mentioned=facts_mentioned,
+            option_counts=option_counts,
+            turn_number=turn_number,
+            projection_matrix=projection_matrix,
+            bert_recognizer=bert_recognizer,
+            state_dim=state_dim,
+        )
+        result['silence_triggered'] = False
+        return result
+
+    # No visitor input — check silence
+    exhibit_facts = knowledge_graph.get_exhibit_facts(exhibit)
+    mentioned_ids = facts_mentioned.get(exhibit, set())
+    snapshot = ConversationSnapshot(
+        last_agent_option=last_agent_option,
+        last_agent_subaction=last_agent_subaction,
+        facts_mentioned_count=len(mentioned_ids),
+        total_facts_at_exhibit=len(exhibit_facts),
+    )
+
+    override = silence_handler.check(current_time, snapshot)
+    if override is None:
+        return {'action': '', 'option': '', 'subaction': '', 'state_vector': None,
+                'action_dict': {}, 'silence_triggered': False}
+
+    silence_handler.notify_action_taken()
+    return {
+        'action': f"{override['option']}/{override['subaction']}",
+        'option': override['option'],
+        'subaction': override['subaction'],
+        'state_vector': None,
+        'action_dict': override,
+        'silence_triggered': True,
+    }
