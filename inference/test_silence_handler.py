@@ -30,8 +30,71 @@ def test_silence_handler_custom_params():
     assert handler.max_triggers == 1
 
 
+def _make_snapshot(**overrides):
+    defaults = dict(
+        last_agent_option="Explain",
+        last_agent_subaction="ExplainNewFact",
+        facts_mentioned_count=3,
+        total_facts_at_exhibit=8,
+    )
+    defaults.update(overrides)
+    return ConversationSnapshot(**defaults)
+
+
+def test_no_trigger_before_threshold():
+    handler = SilenceHandler(threshold_sec=40.0)
+    handler.notify_visitor_spoke(100.0)
+    result = handler.check(130.0, _make_snapshot())  # 30s < 40s
+    assert result is None
+
+
+def test_trigger_at_threshold():
+    handler = SilenceHandler(threshold_sec=40.0)
+    handler.notify_visitor_spoke(100.0)
+    result = handler.check(141.0, _make_snapshot())  # 41s > 40s
+    assert result is not None
+    assert "option" in result
+    assert "subaction" in result
+
+
+def test_no_trigger_before_first_input():
+    handler = SilenceHandler(threshold_sec=40.0)
+    result = handler.check(999.0, _make_snapshot())
+    assert result is None
+
+
+def test_cap_at_max_triggers():
+    handler = SilenceHandler(threshold_sec=40.0, max_triggers=2)
+    handler.notify_visitor_spoke(100.0)
+    result1 = handler.check(141.0, _make_snapshot())
+    assert result1 is not None
+    handler.notify_action_taken()
+    result2 = handler.check(182.0, _make_snapshot())
+    assert result2 is not None
+    handler.notify_action_taken()
+    result3 = handler.check(223.0, _make_snapshot())
+    assert result3 is None
+
+
+def test_reset_on_visitor_spoke():
+    handler = SilenceHandler(threshold_sec=40.0, max_triggers=2)
+    handler.notify_visitor_spoke(100.0)
+    handler.check(141.0, _make_snapshot())
+    handler.notify_action_taken()
+    handler.check(182.0, _make_snapshot())
+    handler.notify_action_taken()
+    handler.notify_visitor_spoke(200.0)
+    result = handler.check(241.0, _make_snapshot())
+    assert result is not None
+
+
 if __name__ == "__main__":
     test_conversation_snapshot_creation()
     test_silence_handler_defaults()
     test_silence_handler_custom_params()
-    print("All Task 1 tests passed.")
+    test_no_trigger_before_threshold()
+    test_trigger_at_threshold()
+    test_no_trigger_before_first_input()
+    test_cap_at_max_triggers()
+    test_reset_on_visitor_spoke()
+    print("All Task 1+2 tests passed.")

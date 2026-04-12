@@ -26,7 +26,18 @@ class SilenceHandler:
 
     def check(self, current_time: float, snapshot: ConversationSnapshot) -> Optional[Dict[str, str]]:
         """Returns action dict {"option": ..., "subaction": ...} if silence triggered, else None."""
-        return None  # Placeholder — implemented in Task 2
+        if self._last_visitor_time is None:
+            return None
+        if self._triggers_used >= self.max_triggers:
+            return None
+        elapsed = current_time - self._last_visitor_time
+        if elapsed < self.threshold_sec:
+            return None
+        return self._select_action(snapshot)
+
+    def _select_action(self, snapshot: ConversationSnapshot) -> Dict[str, str]:
+        """State-dependent rule table. First matching rule wins."""
+        return {"option": "AskQuestion", "subaction": "AskOpinion"}  # Placeholder — Task 3
 
     def notify_visitor_spoke(self, current_time: float) -> None:
         """Resets silence tracking when visitor provides input."""
