@@ -88,6 +88,85 @@ def test_reset_on_visitor_spoke():
     assert result is not None
 
 
+def _trigger(handler, snapshot, spoke_at=100.0, check_at=141.0):
+    """Helper: set up timing so silence triggers, return the action."""
+    handler.notify_visitor_spoke(spoke_at)
+    return handler.check(check_at, snapshot)
+
+
+def test_rule1_second_trigger_returns_ask_clarification():
+    handler = SilenceHandler(threshold_sec=40.0)
+    snap = _make_snapshot(last_agent_option="Explain")
+    _trigger(handler, snap)
+    handler.notify_action_taken()
+    result = handler.check(182.0, snap)
+    assert result == {"option": "AskQuestion", "subaction": "AskClarification"}
+
+
+def test_rule2_after_explain_returns_ask_opinion():
+    handler = SilenceHandler(threshold_sec=40.0)
+    snap = _make_snapshot(last_agent_option="Explain", last_agent_subaction="ExplainNewFact")
+    result = _trigger(handler, snap)
+    assert result == {"option": "AskQuestion", "subaction": "AskOpinion"}
+
+
+def test_rule3_after_ask_question_returns_explain():
+    handler = SilenceHandler(threshold_sec=40.0)
+    snap = _make_snapshot(
+        last_agent_option="AskQuestion",
+        last_agent_subaction="AskOpinion",
+        facts_mentioned_count=3,
+        total_facts_at_exhibit=8,
+    )
+    result = _trigger(handler, snap)
+    assert result == {"option": "Explain", "subaction": "ExplainNewFact"}
+
+
+def test_rule3_fallthrough_when_exhausted():
+    handler = SilenceHandler(threshold_sec=40.0)
+    snap = _make_snapshot(
+        last_agent_option="AskQuestion",
+        facts_mentioned_count=8,
+        total_facts_at_exhibit=8,
+    )
+    result = _trigger(handler, snap)
+    assert result == {"option": "OfferTransition", "subaction": "SummarizeAndSuggest"}
+
+
+def test_rule4_no_facts_yet():
+    handler = SilenceHandler(threshold_sec=40.0)
+    snap = _make_snapshot(
+        last_agent_option="OfferTransition",
+        facts_mentioned_count=0,
+        total_facts_at_exhibit=8,
+    )
+    result = _trigger(handler, snap)
+    assert result == {"option": "Explain", "subaction": "ExplainNewFact"}
+
+
+def test_rule5_exhibit_exhausted():
+    handler = SilenceHandler(threshold_sec=40.0)
+    snap = _make_snapshot(
+        last_agent_option="Explain",
+        facts_mentioned_count=8,
+        total_facts_at_exhibit=8,
+    )
+    result = _trigger(handler, snap)
+    assert result == {"option": "AskQuestion", "subaction": "AskOpinion"}
+
+
+def test_rule6_fallback():
+    handler = SilenceHandler(threshold_sec=40.0)
+    snap = _make_snapshot(
+        last_agent_option="Conclude",
+        last_agent_subaction="WrapUp",
+        facts_mentioned_count=3,
+        total_facts_at_exhibit=8,
+    )
+    result = _trigger(handler, snap)
+    assert result == {"option": "AskQuestion", "subaction": "AskOpinion"}
+
+
 if __name__ == "__main__":
     test_conversation_snapshot_creation()
     test_silence_handler_defaults()
@@ -97,4 +176,11 @@ if __name__ == "__main__":
     test_no_trigger_before_first_input()
     test_cap_at_max_triggers()
     test_reset_on_visitor_spoke()
-    print("All Task 1+2 tests passed.")
+    test_rule1_second_trigger_returns_ask_clarification()
+    test_rule2_after_explain_returns_ask_opinion()
+    test_rule3_after_ask_question_returns_explain()
+    test_rule3_fallthrough_when_exhausted()
+    test_rule4_no_facts_yet()
+    test_rule5_exhibit_exhausted()
+    test_rule6_fallback()
+    print("All Task 3 tests passed.")

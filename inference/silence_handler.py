@@ -37,7 +37,32 @@ class SilenceHandler:
 
     def _select_action(self, snapshot: ConversationSnapshot) -> Dict[str, str]:
         """State-dependent rule table. First matching rule wins."""
-        return {"option": "AskQuestion", "subaction": "AskOpinion"}  # Placeholder — Task 3
+        trigger_number = self._triggers_used + 1
+        has_new_facts = snapshot.facts_mentioned_count < snapshot.total_facts_at_exhibit
+        exhibit_exhausted = snapshot.facts_mentioned_count >= snapshot.total_facts_at_exhibit
+
+        # Rule 1: Second silence trigger — gentle check-in
+        if trigger_number >= 2:
+            return {"option": "AskQuestion", "subaction": "AskClarification"}
+
+        # Rule 2: Was lecturing — flip to question
+        if snapshot.last_agent_option == "Explain":
+            return {"option": "AskQuestion", "subaction": "AskOpinion"}
+
+        # Rule 3: Already asked, got silence — try offering content
+        if snapshot.last_agent_option == "AskQuestion" and has_new_facts:
+            return {"option": "Explain", "subaction": "ExplainNewFact"}
+
+        # Rule 4: Nothing shared yet — start the conversation
+        if snapshot.facts_mentioned_count == 0 and has_new_facts:
+            return {"option": "Explain", "subaction": "ExplainNewFact"}
+
+        # Rule 5: Exhibit exhausted — suggest moving on
+        if exhibit_exhausted:
+            return {"option": "OfferTransition", "subaction": "SummarizeAndSuggest"}
+
+        # Rule 6: Fallback
+        return {"option": "AskQuestion", "subaction": "AskOpinion"}
 
     def notify_visitor_spoke(self, current_time: float) -> None:
         """Resets silence tracking when visitor provides input."""
