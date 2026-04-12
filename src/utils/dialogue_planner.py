@@ -195,56 +195,38 @@ Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
 
 {context_section}
 
-No new facts available. Ask if they'd like to explore a different aspect or move to another exhibit.
-DO NOT mention completion percentage or meta-information.
+ExplainNewFact policy for this turn:
+1) First, directly answer the user's question in a natural way.
+2) No new facts are available now. Do not force a new fact.
+3) You lightly suggest moving to another exhibit.
+4) Do not output any [FACT_ID].
+5) Do not quote the visitor verbatim.
+6) Maximum two sentences.
 
-Response (1-2 sentences):"""
+Response:"""
 
-    new_facts_list = "\n".join([f"  ✓ {fact}" for fact in new_facts])
-    
-    # Show used facts as a warning
-    used_warning = ""
-    if facts_used:
-        used_ids_str = ", ".join(sorted(used_ids))
-        used_warning = f"""
-🚫 ALREADY MENTIONED (DO NOT USE THESE):
-   {used_ids_str}
-"""
+    new_facts_list = "\n".join([f"- {fact}" for fact in new_facts])
+    used_ids_str = ", ".join(sorted(used_ids)) if used_ids else "None"
 
     return f"""[CONTEXT - DO NOT REPEAT]
-Museum guide at: {ex_id}
-Progress: {current_completion:.1%} covered
+Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
 ---
 
 {context_section}
-{used_warning}
-🎯 PRIORITY: RESPOND NATURALLY TO THE VISITOR
-Use the conversation context above to maintain natural flow. Your response MUST:
-- Respond naturally to their message (use context, don't quote verbatim)
-- Then naturally weave in a NEW fact that connects to their interest
 
-⚠️ USE ONLY NEW FACTS - NEVER REPEAT ⚠️
-NEW FACTS AVAILABLE (pick 1-2 from this list ONLY):
+ExplainNewFact policy for this turn:
+1) Sentence 1: briefly answer the user's question.
+2) Sentence 2: add one relevant new fact from the list below.
+3) The second sentence must connect naturally to the first.
+4) Include the exact [FACT_ID] for the fact you use.
+5) Never repeat previously used IDs: {used_ids_str}.
+6) Never invent IDs.
+7) Never use facts outside the list below.
+8) Do not quote the visitor verbatim.
+9) Maximum two sentences.
+
+New facts available (use only from this list):
 {new_facts_list}
-
-🚨 RESPONSE STRUCTURE:
-1. Respond naturally to what they said (e.g., "I'm glad you think so!", "Great question!", "Yes, exactly!")
-2. Share 1-2 NEW facts that relate to their interest
-3. Use EXACT fact IDs in brackets: [ID1] ... [ID2]
-4. Keep it conversational (2-3 sentences total)
-5. DO NOT quote what the visitor said verbatim (avoid "You said...", "I see you...")
-
-STRATEGY: Explain/ExplainNewFact - Reference what was already shared from history to build on it naturally. Use history to know what facts were mentioned and continue the educational flow.
-
-✓ GOOD EXAMPLES:
-"I'm glad you're enjoying it! Speaking of the artistry, this piece was actually created in 1654 [KC_003]."
-"That's a great observation! The turban here is indeed traditional [TU_001], made of fine silk [TU_002]."
-
-✗ FORBIDDEN:
-- Quoting or repeating what the visitor said verbatim
-- Ignoring what the visitor said and just listing facts
-- Repeating ANY fact ID from the "ALREADY MENTIONED" list
-- Making up fact IDs that don't exist
 
 Response:"""
 
@@ -261,30 +243,23 @@ def build_repeat_fact_prompt(ex_id: Optional[str], context_section: str,
         fact_id_match = re.search(r'\[([A-Z]{2}_\d{3})\]', fact_to_repeat)
         fact_id = fact_id_match.group(1) if fact_id_match else ""
         fact_content = re.sub(r'\[([A-Z]{2}_\d{3})\]\s*', '', fact_to_repeat).strip()
-        
+
         return f"""[CONTEXT - DO NOT REPEAT]
-Museum guide at: {ex_id}
-Progress: {current_completion:.1%} covered
+Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
 ---
 
 {context_section}
 
-🎯 PRIORITY: RESPOND NATURALLY TO THE VISITOR
-Use conversation context to maintain natural flow. React naturally to what they said!
+RepeatFact policy:
+1. First answer the user's question naturally.
+2. Then restate the selected previously-shared fact in fresh words.
+3. Use the exact fact ID [{fact_id}] for that repeated fact.
+4. Do not add any new facts or new IDs.
+5. Do not quote the visitor verbatim.
+6. Maximum two sentences.
 
-YOUR TASK:
-1. Respond naturally to their message (use context, don't quote verbatim)
-2. Rephrase this fact in fresh, clearer words: "{fact_content}"
-3. Include the exact fact ID: [{fact_id}]
-4. DO NOT quote what the visitor said verbatim
-
-STRATEGY: Explain/RepeatFact - Use history to identify which fact needs repeating based on the conversation flow.
-
-✓ GOOD EXAMPLES:
-"Great question! To put it simply, this piece dates back to 1643 [{fact_id}]."
-"I see what you're curious about! The oil on panel technique [{fact_id}] creates that depth you're noticing."
-
-Keep it brief (2-3 sentences). Don't add NEW facts.
+Selected repeated fact:
+- [{fact_id}] {fact_content}
 
 Response:"""
     else:
@@ -294,10 +269,13 @@ Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
 
 {context_section}
 
-No facts shared yet. Share an interesting fact about this exhibit that relates to what they just said.
-DO NOT mention completion percentage or meta-information.
+RepeatFact policy:
+1. No previously shared fact is available to repeat.
+2. Answer the user's question directly without adding any [FACT_ID].
+3. Do not invent fact IDs.
+4. Maximum two sentences.
 
-Response (2-3 sentences):"""
+Response:"""
 
 
 def build_clarify_fact_prompt(ex_id: Optional[str], context_section: str,
@@ -306,39 +284,37 @@ def build_clarify_fact_prompt(ex_id: Optional[str], context_section: str,
     """Build prompt for clarifying a fact"""
     if facts_used:
         fact_to_clarify = selected_fact if selected_fact else facts_used[-1]
+        fact_plain = re.sub(r'^\s*\[[A-Z]{2}_\d{3}\]\s*', '', fact_to_clarify or '').strip()
         return f"""[CONTEXT - DO NOT REPEAT]
 Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
 ---
 
 {context_section}
 
-🎯 PRIORITY: RESPOND NATURALLY TO THE VISITOR
-Use conversation context to understand what needs clarification. Address their confusion naturally!
+ClarifyFact policy:
+1. First, respond naturally to the user's question or confusion.
+2. Clarify this previously discussed fact in simpler words or with an everyday analogy:
+   "{fact_plain}"
+3. Do not introduce new facts.
+4. Do not include any [FACT_ID].
+5. Do not quote the visitor verbatim.
+6. Maximum two sentences.
 
-YOUR TASK:
-1. Show you understand what confused them (use context, don't quote verbatim)
-2. Clarify this fact using a simple analogy or everyday example: "{fact_to_clarify}"
-3. DO NOT quote what the visitor said verbatim
+Response:"""
 
-STRATEGY: Explain/ClarifyFact - Reference what was discussed from history to understand what needs clarification.
-
-✓ GOOD EXAMPLES:
-"Ah, I see what you mean! Think of it like this - the technique is similar to..."
-"That's a great question! Basically, what this means is..."
-"I can see why that's confusing! Imagine it as..."
-
-Keep it conversational (2-3 sentences). NO new facts or [FACT_IDs] - just clarify what we already discussed."""
-    else:
-        return f"""[CONTEXT - DO NOT REPEAT]
+    return f"""[CONTEXT - DO NOT REPEAT]
 Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
 ---
 
 {context_section}
 
-No facts shared yet. Clarify an interesting fact about this exhibit that relates to what they just said.
-DO NOT mention completion percentage or meta-information.
+ClarifyFact policy:
+1. No previously discussed fact is available to clarify.
+2. Answer the user's question directly in simple language.
+3. Do not include any [FACT_ID].
+4. Maximum two sentences.
 
-Response (2-3 sentences):"""
+Response:"""
 
 
 # ===== ASK QUESTION OPTION FUNCTIONS =====
@@ -354,27 +330,14 @@ Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
 
 {context_section}
 
-🎯 PRIORITY: RESPOND NATURALLY TO THE VISITOR
-Use conversation history to ask a relevant follow-up question. React naturally to what they said!
-
-YOUR TASK:
-1. React warmly to what they said (use context, don't quote verbatim)
-2. Ask a genuine question about their opinion/feeling on something related
-3. DO NOT quote what the visitor said verbatim
-
-STRATEGY: AskQuestion/AskOpinion - Use history to ask relevant follow-ups based on what was discussed.
-
-✓ GOOD EXAMPLES:
-"That's a lovely observation! What draws your eye most about this piece?"
-"I see what you mean! Do you find the colors striking, or is it more the subject matter?"
-"Absolutely! What's your first impression of the artist's style here?"
-
-✗ BAD (generic/ignoring their input/quoting verbatim):
-"What do you think of this painting?"
-"Do you have any questions?"
-"You said 'interesting' - what do you think?" (quoting verbatim)
-
-Keep it conversational (1-2 sentences). NO facts or [IDs].
+AskOpinion policy:
+1. First, respond naturally to the user's current input without quoting them verbatim.
+2. Then ask exactly one opinion question.
+3. The question must include at least one keyword from the current exhibit or current AOI.
+4. The question must be opinion/feeling-oriented.
+5. Do not introduce new facts.
+6. Do not include any [FACT_ID].
+7. Maximum two sentences.
 
 Response:"""
 
@@ -384,29 +347,41 @@ def build_ask_memory_prompt(ex_id: Optional[str], context_section: str,
                           current_completion: float = 0.0) -> str:
     """Build prompt for checking the visitor's memory"""
 
+    if facts_used:
+        recent_facts = facts_used[-3:]
+        facts_block = "\n".join([f"- {f}" for f in recent_facts])
+        return f"""[CONTEXT - DO NOT REPEAT]
+Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
+---
+
+{context_section}
+
+AskMemory policy:
+1. First respond naturally to the user's current input.
+2. Then ask one short memory-check question.
+3. Memory target priority:
+   - Highest priority: recall from facts already used in this exhibit.
+   - If no usable fact, recall from recently mentioned points in conversation history.
+4. Do not include [FACT_ID].
+5. Maximum two sentences.
+
+Recent used facts (priority memory source):
+{facts_block}
+
+Response:"""
+
     return f"""[CONTEXT - DO NOT REPEAT]
 Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
 ---
 
 {context_section}
 
-🎯 PRIORITY: RESPOND NATURALLY TO THE VISITOR
-Use conversation history to reference what was discussed earlier. Respond naturally to what they said!
-
-YOUR TASK:
-1. Respond naturally to what they said (use context, don't quote verbatim)
-2. Playfully check if they remember something from earlier in your chat
-3. Reference past topics naturally, don't quote verbatim
-4. DO NOT quote what the visitor said verbatim
-
-STRATEGY: AskQuestion/AskMemory - Naturally reference past conversation to check memory, don't quote verbatim.
-
-✓ GOOD EXAMPLES:
-"Great question! Speaking of which, do you recall what year this was painted?"
-"I'm glad you noticed that! Can you remember what we said about the artist's technique?"
-"Exactly right! Do you remember why that detail is significant?"
-
-Keep it light and engaging (1-2 sentences). NO [FACT_IDs].
+AskMemory policy:
+1. First respond naturally to the user's current input.
+2. Then ask one short memory-check question.
+3. Memory target: recently mentioned points in conversation history.
+4. Do not include [FACT_ID].
+5. Maximum two sentences.
 
 Response:"""
 
@@ -421,22 +396,12 @@ Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
 
 {context_section}
 
-🎯 PRIORITY: RESPOND NATURALLY TO THE VISITOR
-Use conversation history to understand what needs clarification. Respond naturally to what they said!
-
-YOUR TASK:
-1. Show you're listening by responding naturally (use context, don't quote verbatim)
-2. Ask a clarifying question to better understand what interests them
-3. DO NOT quote what the visitor said verbatim
-
-STRATEGY: AskQuestion/AskClarification - Use history to understand what needs clarification and ask relevant questions.
-
-✓ GOOD EXAMPLES:
-"That's interesting! Are you more curious about the historical context or the artistic technique?"
-"I'd love to tell you more! Would you like to know about the symbolism or the artist's life?"
-"Good point! What specifically caught your attention about that?"
-
-Keep it warm and curious (1-2 sentences). NO [FACT_IDs].
+AskClarification policy:
+1. Follow this priority order: Answer > Summary > Clarify question.
+2. Only ask a clarification question if ambiguity is genuine.
+3. Do not include any [FACT_ID].
+4. Do not quote the visitor verbatim.
+5. Maximum two sentences.
 
 Response:"""
 
@@ -499,92 +464,41 @@ def build_offer_transition_prompt(ex_id: Optional[str], context_section: str,
     - coverage_dict: Museum-wide completion stats (from state tracking)
     """
 
-    # Fallback for when we don't have proper state data
-    if not target_exhibit:
-        return f"""You are a museum guide. SUGGEST moving to a different exhibit.
-
-{context_section}
-
-Respond naturally:
-- Suggest visiting another exhibit
-- Be conversational and helpful
-- Keep it brief (2 sentences)"""
-
-    # Main transition logic using state-driven exhibit selection
-    target_name = target_exhibit.replace('_', ' ')
     current_name = ex_id.replace('_', ' ') if ex_id else 'current exhibit'
-    
-    # Get target exhibit info if knowledge graph available
-    target_description = ""
-    if knowledge_graph:
-        try:
-            target_facts = knowledge_graph.get_exhibit_facts(target_exhibit)
-            if target_facts:
-                # Get first fact as a teaser
-                target_description = f"\nTEASER about {target_name}: {target_facts[0][:100]}..."
-        except:
-            pass
 
-    # Use exhibit completion data to inform the transition
-    if coverage_dict:
-        current_stats = coverage_dict.get(ex_id, {"mentioned": 0, "total": 1, "coverage": 0})
-        target_stats = coverage_dict.get(target_exhibit, {"mentioned": 0, "total": 1, "coverage": 0})
-        
-        # Calculate remaining facts
-        target_remaining = target_stats["total"] - target_stats["mentioned"]
-        
-        # CRITICAL: Warn if target is exhausted (should never happen, but safety check)
-        if target_remaining <= 0:
-            freshness_note = "⚠️ WARNING: This exhibit has already been fully covered!"
-        elif target_stats["mentioned"] == 0:
-            freshness_note = f"(completely fresh - {target_stats['total']} facts to discover)"
-        else:
-            freshness_note = f"({target_remaining} new facts remaining out of {target_stats['total']})"
-
-        return f"""MUSEUM GUIDE - SMOOTH TRANSITION TO NEW PAINTING
-
-YOU ARE CURRENTLY AT: "{current_name}" (covered {current_stats["mentioned"]}/{current_stats["total"]} facts)
-YOU WILL NOW MOVE TO: "{target_name}" {freshness_note}
-{target_description}
+    if not target_exhibit:
+        return f"""[CONTEXT - DO NOT REPEAT]
+Museum guide at: {current_name}
+---
 
 {context_section}
 
-🎯 YOUR TASK:
-1. Briefly wrap up "{current_name}" (1 short sentence - use conversation history to reference what was discussed naturally)
-2. Smoothly introduce "{target_name}" by name and make it sound interesting
-3. IMPORTANT: You are SUGGESTING the move - the visitor hasn't moved yet!
-4. DO NOT quote what the visitor said verbatim - use conversation context for natural flow
+SummarizeAndSuggest policy:
+1. Keep exactly two sentences.
+2. Sentence 1: briefly summarize what has been discussed so far.
+3. Sentence 2: provide a neutral suggestion to choose any other exhibit.
+4. This is only a suggestion; do not imply the visitor already moved.
+5. Do not include any [FACT_ID].
 
-STRATEGY: OfferTransition/SummarizeAndSuggest - Reference what was discussed to transition smoothly. Use history to wrap up naturally.
+Response:"""
 
-✓ GOOD EXAMPLES:
-"We've explored {current_name}'s fascinating history. Now, let me take you to see {target_name} - a remarkable piece that tells a very different story."
-"That covers the highlights of {current_name}! Right this way to {target_name}, where we'll discover..."
+    target_name = target_exhibit.replace('_', ' ')
 
-✗ BAD (DO NOT DO THIS):
-- Jumping straight into facts about the new exhibit
-- Not mentioning {target_name} by name
-- Saying "we're now looking at" (you haven't moved yet!)
-
-Response (2-3 sentences, conversational):"""
-
-    # Simple fallback without completion data
-    return f"""MUSEUM GUIDE - SUGGEST MOVE TO NEW PAINTING
-
-CURRENT PAINTING: "{current_name}"
-NEXT PAINTING: "{target_name}"
+    return f"""[CONTEXT - DO NOT REPEAT]
+Museum guide at: {current_name}
+---
 
 {context_section}
 
-🎯 YOUR TASK:
-1. Briefly wrap up the current painting (use conversation history to reference what was discussed naturally)
-2. Suggest moving to "{target_name}" by name
-3. Make it sound enticing
-4. DO NOT quote what the visitor said verbatim - use conversation context for natural flow
+SummarizeAndSuggest policy:
+1. Keep exactly two sentences.
+2. Sentence 1: briefly summarize what has been discussed so far.
+3. Sentence 2: suggest moving to "{target_name}" and name it explicitly.
+4. This is only a suggestion; do not imply the visitor already moved.
+5. Do not introduce new facts about the target exhibit.
+6. Do not include any [FACT_ID].
 
-✓ EXAMPLE: "We've seen some wonderful details here. Shall we head over to {target_name}? It has quite a story to tell."
-
-Response (2 sentences):"""
+Response:"""
 
 # ===== CONCLUDE OPTION FUNCTIONS =====
 
@@ -598,60 +512,59 @@ Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
 
 {context_section}
 
-YOUR TASK:
-- Thank them warmly for visiting
-- Express hope they enjoyed the experience
-- Use conversation history to summarize naturally what was discussed
-- Keep it natural and conversational (2 sentences)
-- DO NOT quote what the visitor said verbatim
-
-STRATEGY: Conclude/WrapUp - Summarize naturally using history context. Reference the overall experience without quoting verbatim.
-
-CRITICAL RULES:
-- NO [FACT_ID] tags or recapping information
-- Focus on their overall experience
-- End on a positive, welcoming note
-- DO NOT mention completion percentage or meta-information
+WrapUp policy:
+1. Keep exactly two sentences.
+2. If the user's latest input contains a clear question:
+   - Sentence 1: briefly answer that question directly.
+   - Sentence 2: politely close the visit (thanks + warm ending).
+3. If there is no clear question:
+   - Sentence 1: briefly summarize 1-2 key points already discussed.
+   - Sentence 2: politely close the visit (thanks + warm ending).
+4. Do not introduce new facts.
+5. Do not include any [FACT_ID].
+6. Do not ask a new question.
+7. Do not mention system state (coverage, policy, strategy, completion).
 
 Response:"""
 
 
-def build_summarize_key_points_prompt(ex_id: Optional[str], context_section: str, 
-                                    facts_all: List[str], facts_used: List[str]) -> str:
+def build_summarize_key_points_prompt(ex_id: Optional[str], context_section: str,
+                                    facts_all: List[str], facts_used: List[str],
+                                    current_completion: float = 0.0) -> str:
     """Build prompt for summarizing key points"""
     if facts_used:
         key_points = facts_used[-3:] if len(facts_used) >= 3 else facts_used
         summary_points = "\n".join([f"- {fact}" for fact in key_points])
-        
-        return f"""SUMMARIZE these key points briefly: 
-{summary_points}
+
+        return f"""[CONTEXT - DO NOT REPEAT]
+Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
+---
 
 {context_section}
 
-INSTRUCTIONS:
-1. Recap 2-3 main points using conversation history
-2. Keep very brief (2-3 sentences max)
-3. DO NOT quote what the visitor said verbatim
+SummarizeKeyPoints policy:
+1. Keep exactly two sentences.
+2. Recap 2-3 main points from the key facts below.
+3. Do not introduce new facts.
+4. Do not include any [FACT_ID].
+5. Do not quote the visitor verbatim.
 
-CRITICAL RULES:
-- NO new facts - only summarize what's been discussed
-- NO [FACT_ID] tags
-- Focus on the most interesting or important points
-
-STRATEGY: Conclude/SummarizeKeyPoints - Use history to summarize naturally what was discussed, without quoting verbatim.
+Key facts to summarize:
+{summary_points}
 
 Response:"""
     else:
-        return f"""Museum guide. Current exhibit: {ex_id} (completion: {current_completion:.1%}).
+        return f"""[CONTEXT - DO NOT REPEAT]
+Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
+---
 
 {context_section}
 
-YOUR TASK:
-- Provide a warm conclusion to the visit
-- Thank the visitor for their time and engagement
-- Express appreciation for their interest
-- End on a positive, welcoming note
+SummarizeKeyPoints policy:
+1. Keep exactly two sentences.
+2. Provide a warm conclusion to the visit.
+3. Do not include any [FACT_ID].
 
-Response (2 sentences):"""
+Response:"""
 
 

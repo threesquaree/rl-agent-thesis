@@ -1,0 +1,75 @@
+# Hybrid RL Learning Loop in Museum Agent
+
+This document details the flow of information during a single turn of interaction between the RL Agent and the Sim8 Simulator. The compact diagram below illustrates the routing, while the **Step-by-Step Details** section provides the required context without breaking the image layout.
+
+```mermaid
+graph TD
+    %% Define Styles
+    classDef agent fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef simulator fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+    classDef state fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
+    classDef action fill:#ede7f6,stroke:#512da8,stroke-width:2px;
+    classDef reward fill:#fce4ec,stroke:#c2185b,stroke-width:2px;
+    classDef brain fill:#fffde7,stroke:#fbc02d,stroke-width:2px;
+
+    %% Components
+    subgraph Agent ["RL Agent Core"]
+        A_PPO["(9) PPO Neural Net"]:::agent
+        A_Action["(1) Select Action"]:::action
+        A_State["(6) Observe State"]:::state
+    end
+
+    subgraph Sim8 ["Hybrid Simulator"]
+        S_Eval["(2) Evaluate Rules"]:::simulator
+        S_Roll["(3) Roll Dice"]:::simulator
+        S_Text["(4) Generate Speech"]:::simulator
+        S_Gaze["(7) Generate Dwell"]:::simulator
+    end
+
+    subgraph StateUpdate ["DialogueBERT"]
+        DB_Bert["(5a) Process Text"]:::brain
+        DB_Emb["(5b) Embed Text"]:::state
+    end
+
+    %% Flow
+    A_Action -- "Takes Action" --> S_Eval
+    S_Eval -- "Rates Action" --> S_Roll
+    
+    %% Split into State vs Reward
+    S_Roll -- "response_type" --> S_Text
+    S_Roll -- "response_type" --> S_Gaze
+    
+    %% Semantic Text Flow (State)
+    S_Text -- "speech text" --> DB_Bert
+    DB_Bert -- "encoded state" --> DB_Emb
+    DB_Emb -- "New State" --> A_State
+    A_State -.-> A_PPO
+    
+    %% Numerical Reward Flow (Reward)
+    S_Gaze -- "dwell array" --> R_Dwell(("(8) Reward Signal")):::reward
+    R_Dwell -- "Reward Score" --> A_PPO
+    
+    %% Learning Loop
+    A_PPO -. "Updates Policy" .-> A_Action
+```
+
+## Step-by-Step Details
+
+### Agent Acting
+**1. Select Action:** The RL agent chooses a dialog action (e.g., `'ExplainNewFact'` or `'AskQuestion'`) based on the current state.
+
+### Simulator Evaluation
+**2. Evaluate Rules:** The simulator heuristics evaluate the action. Did the agent spam facts? Did it change exhibits abruptly? Are there hallucinations? Penalties and bonuses are calculated.
+**3. Roll Dice & Split:** The simulator randomly selects a [response_type](file:///Users/Nayan/Thesis/src/simulator/hybrid_simulator.py#1222-1235) (like `'confusion'` or `'acknowledgment'`). This single decision is split into two entirely independent data streams: **Text (State)** and **Gaze (Reward)**.
+
+### The "State" Pipeline (Listening)
+**4. Generate Speech:** A language model (or template logic) uses the [response_type](file:///Users/Nayan/Thesis/src/simulator/hybrid_simulator.py#1222-1235) to generate spoken visitor dialog (e.g., *“I don't understand what you mean...”*).
+**5. Process & Embed Text**: [DialogueBERT](file:///Users/Nayan/Thesis/src/utils/dialoguebert_model.py#28-161) processes this raw text, converting semantic meaning into a numerical tensor (state embedding).
+**6. Observe State**: The RL agent ingests this new state vector to understand the "context" so it knows what the visitor is talking about.
+
+### The "Reward" Pipeline (Scoring)
+**7. Generate Dwell:** Simultaneously, the simulator synthesizes eye-tracking metrics. The agreed-upon [response_type](file:///Users/Nayan/Thesis/src/simulator/hybrid_simulator.py#1222-1235) directly dictates the length of the `dwell_time` (e.g., `'confusion'` = Low Dwell).
+**8. Reward Score:** The environment extracts the `dwell_time` numerical value to use as the pure scalar Reward Signal. *Low dwell time = negative feedback, High dwell time = positive feedback.*
+
+### The Learning Mechanism
+**9. PPO Neural Net:** The reinforcement learning optimizer combines the Context (Step 6) and the Final Score (Step 8). It adjusts its probability weights over thousands of episodes, answering the question: *"When I see a speech state like this, which action will yield the highest dwell time reward next time?"*

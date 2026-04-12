@@ -6,7 +6,7 @@ instead of full DialogueBERT embeddings for hypothesis testing.
 
 State: [f_t, h_t, a_t] where:
 - f_t: focus vector (n_exhibits + 1)
-- h_t: dialogue history (n_exhibits + 4)
+- h_t: dialogue history (n_exhibits + n_subactions)
 - a_t: dialogue act probability distribution (8-d)
 Total: ~23-d for 5 exhibits (vs 149-d with DialogueBERT)
 
@@ -38,10 +38,10 @@ class H5StateAblationEnv(MuseumDialogueEnv):
         
         # Override observation space dimension
         # Focus: n_exhibits + 1
-        # History: n_exhibits + 4
+        # History: n_exhibits + n_subactions (per-subaction usage)
         # Dialogue act: 8 (probability distribution)
         act_dim = self.act_classifier.get_state_dim()  # 8-d
-        new_obs_dim = (self.n_exhibits + 1) + (self.n_exhibits + len(self.options)) + act_dim
+        new_obs_dim = (self.n_exhibits + 1) + (self.n_exhibits + len(self._all_subactions)) + act_dim
         
         from gymnasium import spaces
         self.observation_space = spaces.Box(
@@ -60,7 +60,7 @@ class H5StateAblationEnv(MuseumDialogueEnv):
         
         State: [f_t, h_t, a_t]
         - f_t: focus vector (n_exhibits + 1)
-        - h_t: dialogue history (n_exhibits + 4)
+        - h_t: dialogue history (n_exhibits + n_subactions)
         - a_t: dialogue act probability distribution (8-d soft labels)
         """
         # 1. Focus vector f_t (same as baseline)
@@ -71,16 +71,16 @@ class H5StateAblationEnv(MuseumDialogueEnv):
             focus_snapshot[-1] = 1.0
         
         # 2. Dialogue history h_t (same as baseline)
-        history = np.zeros(self.n_exhibits + len(self.options))
+        history = np.zeros(self.n_exhibits + len(self._all_subactions))
         coverage = self._get_museum_exhibit_coverage()
-        
+
         for i, exhibit_name in enumerate(self.exhibit_keys):
             completion_ratio = coverage.get(exhibit_name, {"coverage": 0.0})["coverage"]
             history[i] = completion_ratio
-        
+
         total_actions = sum(self.actions_used.values()) or 1
-        for i, opt in enumerate(self.options):
-            history[self.n_exhibits + i] = self.actions_used[opt] / total_actions
+        for i, sa in enumerate(self._all_subactions):
+            history[self.n_exhibits + i] = self.actions_used[sa] / total_actions
         
         # 3. Dialogue act a_t (H4: replaces DialogueBERT embeddings)
         # Use zero-shot classification with soft probabilities

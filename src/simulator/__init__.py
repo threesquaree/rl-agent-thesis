@@ -49,6 +49,7 @@ def get_simulator(
     """
     if simulator_type == "sim8":
         from .sim8_adapter import Sim8Simulator
+        kwargs.pop("stochasticity", None)  # stochasticity is hybrid-only
         return Sim8Simulator(
             knowledge_graph=knowledge_graph,
             exhibits=exhibits,
@@ -57,6 +58,7 @@ def get_simulator(
         )
     elif simulator_type == "state_machine":
         from .state_machine_simulator import StateMachineSimulator
+        kwargs.pop("stochasticity", None)
         return StateMachineSimulator(
             knowledge_graph=knowledge_graph,
             exhibits=exhibits,

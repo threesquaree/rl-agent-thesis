@@ -121,6 +121,18 @@ class MuseumDialogueEnv(gym.Env):
         self.action_repeat_penalty = float(os.environ.get("HRL_ACTION_REPEAT_PENALTY", "0.15"))
         self.action_repeat_threshold = int(os.environ.get("HRL_ACTION_REPEAT_THRESHOLD", "2"))  # Penalty starts after N consecutive
 
+        # ===== ExplainNewFact DIMINISHING RETURNS (anti-spam, reward-shaping) =====
+        # Novelty reward for ExplainNewFact decays geometrically with consecutive uses:
+        #   Turn 1: novelty × 1.00  (no decay)
+        #   Turn 2: novelty × decay_rate          (default 0.65)
+        #   Turn 3: novelty × decay_rate²         (default 0.42)
+        #   Turn N: novelty × max(floor, decay_rate^(N-1))
+        # Applies in BOTH standard and broadened novelty modes.
+        # Encourages the agent to interleave AskQuestion / ClarifyFact / RepeatFact
+        # rather than monologue-lecturing through every fact sequentially.
+        self.enf_decay_rate = float(os.environ.get("HRL_ENF_DECAY_RATE", "0.65"))
+        self.enf_decay_floor = float(os.environ.get("HRL_ENF_DECAY_FLOOR", "0.25"))
+
         # ===== RESPONSE TYPE FEATURES (thesis extension) =====
         # Response type as state feature: 6-dim one-hot (acknowledgment, follow_up_question, question, statement, confusion, silence)
         self.response_type_feature = os.environ.get("HRL_RESPONSE_TYPE_FEATURE", "0") == "1"
@@ -186,7 +198,9 @@ class MuseumDialogueEnv(gym.Env):
         # Example: 5 exhibits → (5+1) + (5+4) + 64 + 64 = 143-d
         
         focus_dim = self.n_exhibits + 1  # +1 for "no focus" state
-        history_dim = self.n_exhibits + len(self.options)  # completion ratios + actions used
+        # Flat subaction list for history tracking (deterministic ordering)
+        self._all_subactions = [sa for opt in self.options for sa in self.subactions[opt]]
+        history_dim = self.n_exhibits + len(self._all_subactions)  # completion ratios + per-subaction usage
         intent_dim = 64  # Projected DialogueBERT intent embedding
         context_dim = 64  # Projected DialogueBERT dialogue context
         subaction_availability_dim = 4  # Subaction availability indicators
@@ -253,7 +267,7 @@ class MuseumDialogueEnv(gym.Env):
         
         # Dialogue history tracking
         self.explained = [0] * self.n_exhibits  # Which exhibits have been explained
-        self.actions_used = {opt: 0 for opt in self.options}  # Count of each action type used
+        self.actions_used = {sa: 0 for sa in self._all_subactions}  # Count of each flat subaction used
         self.consecutive_explain_turns = 0
         
         # Option tracking (for termination learning)
@@ -264,6 +278,9 @@ class MuseumDialogueEnv(gym.Env):
         # Action repetition tracking (anti-spam)
         self._last_subaction = None
         self._consecutive_same_action = 0
+
+        # ExplainNewFact consecutive counter (for diminishing returns)
+        self._consecutive_explain_new_fact = 0
         
         # Transition insufficiency tracking (per paper.tex Section 4.7, line 707)
         # Track last successful transition turn for 3-turn exemption rule
@@ -419,12 +436,18 @@ class MuseumDialogueEnv(gym.Env):
             # Continue current option
             self.turns_in_option += 1
         
-        # Update action usage
-        self.actions_used[option] += 1
+        # Update action usage (per flat subaction)
+        self.actions_used[subaction] += 1
         if option == "Explain":
             self.consecutive_explain_turns += 1
         else:
             self.consecutive_explain_turns = 0
+
+        # Track consecutive ExplainNewFact for diminishing returns (reset on ANY other subaction)
+        if subaction == "ExplainNewFact":
+            self._consecutive_explain_new_fact += 1
+        else:
+            self._consecutive_explain_new_fact = 0
         
         # Get current exhibit ID for response generation and reward calculation
         ex_id = self._get_current_exhibit()
@@ -603,9 +626,22 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         bnov_stale = 0.0
         bnov_transition = 0.0
 
+        # ===== ExplainNewFact DIMINISHING RETURNS =====
+        # Decay multiplier: 1.0 on first use, decay_rate^(n-1) on nth consecutive use.
+        # Floored at enf_decay_floor so ExplainNewFact always yields some reward.
+        # Resets to 1.0 the moment any other subaction is taken.
+        if subaction == "ExplainNewFact" and self._consecutive_explain_new_fact > 1:
+            enf_decay = max(self.enf_decay_floor,
+                            self.enf_decay_rate ** (self._consecutive_explain_new_fact - 1))
+        else:
+            enf_decay = 1.0
+        if verbose and enf_decay < 1.0:
+            print(f"📉 ENF DECAY: ×{enf_decay:.3f} (consecutive={self._consecutive_explain_new_fact})")
+
         if self.broadened_novelty:
             # Broadened novelty (thesis Eq. 5): rewards multiple content-advancing actions
-            bnov_new = self.alpha_new if subaction == "ExplainNewFact" and len(new_fact_ids) > 0 else 0.0
+            # ENF diminishing returns applied only to bnov_new; other components unaffected.
+            bnov_new = self.alpha_new * enf_decay if subaction == "ExplainNewFact" and len(new_fact_ids) > 0 else 0.0
             bnov_rep = self.alpha_rep if subaction == "RepeatFact" else 0.0
             bnov_clar = self.alpha_clar if subaction == "ClarifyFact" else 0.0
             # Ask bonus with diminishing returns: full bonus on 1st, halved on 2nd, zero on 3rd+
@@ -646,9 +682,10 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
             self.bnov_transition_sum += bnov_transition
         else:
             # Standard novelty: r^nov_t = novelty_per_fact × |new_facts| (paper.tex line 681)
-            novelty_reward = len(new_fact_ids) * self.novelty_per_fact
+            # ENF diminishing returns applied as a multiplier on the per-fact reward.
+            novelty_reward = len(new_fact_ids) * self.novelty_per_fact * enf_decay
             if verbose and len(new_fact_ids) > 0:
-                print(f"📚 NOVELTY REWARD: +{novelty_reward:.3f} ({len(new_fact_ids)} new fact(s): {new_fact_ids[:3]})")
+                print(f"📚 NOVELTY REWARD: +{novelty_reward:.3f} ({len(new_fact_ids)} new fact(s): {new_fact_ids[:3]}, enf_decay={enf_decay:.3f})")
         
         # ===== EXHAUSTION PENALTY (H6 fix) =====
         # Penalize ANY Explain subaction on exhausted exhibits to create gradient toward transitions
@@ -954,7 +991,7 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         
         Where:
         - f_t: focus vector (one-hot over exhibits + no-focus)
-        - h_t: dialogue history (exhibits explained + action counts)
+        - h_t: dialogue history (exhibits explained + per-subaction counts)
         - i_t: projected intent embedding = P * DialogueBERT(u_t, role="user", turn_number)
         - c_t: projected dialogue context = P * DialogueBERT(recent_utterances with turn/role)
         
@@ -972,23 +1009,23 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         else:
             focus_snapshot[-1] = 1.0  # No focus
         
-        # 2. Dialogue history vector h_t (n_exhibits + 4-d, e.g., 9-d for 5 exhibits)
+        # 2. Dialogue history vector h_t (n_exhibits + n_subactions-d)
         # First n_exhibits: exhibit completion ratios (0-1 for facts shared per exhibit)
-        # Next 4: option usage (normalized counts)
-        history = np.zeros(self.n_exhibits + len(self.options))
+        # Next n_subactions: per-subaction usage (normalized counts)
+        history = np.zeros(self.n_exhibits + len(self._all_subactions))
 
         # Get current exhibit completion data
         coverage = self._get_museum_exhibit_coverage()
 
-        # Exhibit completion ratios (0-1 for facts shared) - positions 0-7
+        # Exhibit completion ratios (0-1 for facts shared)
         for i, exhibit_name in enumerate(self.exhibit_keys):
             completion_ratio = coverage.get(exhibit_name, {"coverage": 0.0})["coverage"]
             history[i] = completion_ratio
 
-        # Actions used (normalized counts) - positions 8-11
+        # Per-subaction usage (normalized counts)
         total_actions = sum(self.actions_used.values()) or 1
-        for i, opt in enumerate(self.options):
-            history[self.n_exhibits + i] = self.actions_used[opt] / total_actions
+        for i, sa in enumerate(self._all_subactions):
+            history[self.n_exhibits + i] = self.actions_used[sa] / total_actions
         
         # 3. Intent embedding i_t (64-d projected from 768-d)
         # Get DialogueBERT embedding: e_t = DialogueBERT(u_t, role="user", turn_number)

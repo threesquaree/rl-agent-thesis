@@ -180,6 +180,10 @@ Examples:
                        help='Penalty per consecutive same-subaction over threshold (default: 0.15)')
     parser.add_argument('--action-repeat-threshold', type=int, default=2,
                        help='Number of consecutive repeats before penalty kicks in (default: 2)')
+    parser.add_argument('--enf-decay-rate', type=float, default=0.65,
+                       help='ExplainNewFact diminishing returns: geometric decay per consecutive use (default: 0.65)')
+    parser.add_argument('--enf-decay-floor', type=float, default=0.25,
+                       help='ExplainNewFact diminishing returns: minimum decay multiplier (default: 0.25)')
     parser.add_argument('--w-responsiveness', type=float, default=0.5,
                        help='Responsiveness reward: +w_responsiveness (answer) / -0.6*w_responsiveness (deflect) (default: 0.5, increased for H2)')
     parser.add_argument('--w-conclude', type=float, default=0.4,
@@ -453,7 +457,11 @@ Examples:
             "w_conclude": args.w_conclude,
             "response_type_feature": args.response_type_feature,
             "response_type_reward": args.response_type_reward,
-            "w_response_type": args.w_response_type
+            "w_response_type": args.w_response_type,
+            "exhaustion_penalty": args.exhaustion_penalty,
+            "transition_bonus": args.transition_bonus,
+            "enf_decay_rate": args.enf_decay_rate,
+            "enf_decay_floor": args.enf_decay_floor,
         },
         "note": f"Reward mode: {args.reward_mode}. Baseline = engagement + novelty only. Augmented adds responsiveness, transition, conclude, question-asking.",
         "map_interval": args.map_interval,
@@ -542,6 +550,10 @@ Examples:
     # Anti-spam: action repetition penalty
     os.environ["HRL_ACTION_REPEAT_PENALTY"] = str(args.action_repeat_penalty)
     os.environ["HRL_ACTION_REPEAT_THRESHOLD"] = str(args.action_repeat_threshold)
+
+    # ExplainNewFact diminishing returns
+    os.environ["HRL_ENF_DECAY_RATE"] = str(args.enf_decay_rate)
+    os.environ["HRL_ENF_DECAY_FLOOR"] = str(args.enf_decay_floor)
 
     # H1 Advanced: Pass diversity reward coefficient
     os.environ["HRL_DIVERSITY_REWARD_COEF"] = str(args.diversity_reward_coef)
