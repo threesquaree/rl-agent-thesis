@@ -1703,6 +1703,8 @@ class HRLTrainingLoop:
         print(f"� Current Pace: {turns_per_hour:.0f} turns/hour")
         if self.map_interval > 0:
             print(f"�🗺️  Maps Saved: {(self.current_episode // self.map_interval)} animations")
+        if self.stoch_scheduler is not None:
+            print(f"[STOCH]   Stochasticity: {self.stoch_scheduler.start:.3f} → {self.stoch_scheduler.current_value:.3f}  (start → current, cosine schedule)")
         print(f"[PROGRESS] Progress: {(self.current_episode/self.max_episodes)*100:.1f}% complete")
         print("=" * 80 + "\n")
 
@@ -2540,7 +2542,8 @@ class HRLTrainingLoop:
                 "value_losses": self.metrics_tracker.value_losses,
                 "policy_losses": self.metrics_tracker.policy_losses,
                 "termination_losses": self.metrics_tracker.termination_losses,
-                "advantages": self.metrics_tracker.advantages
+                "advantages": self.metrics_tracker.advantages,
+                "stochasticity_per_episode": self.stochasticity_history,
             }
             
             # Get smoothed learning curve

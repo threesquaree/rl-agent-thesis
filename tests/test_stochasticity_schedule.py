@@ -58,3 +58,11 @@ def test_raises_for_single_episode():
     import pytest
     with pytest.raises(ValueError, match="total_episodes"):
         StochasticityScheduler(start=0.8, end=0.2, total_episodes=1)
+
+
+def test_history_length_matches_episodes():
+    """stochasticity_history should have one entry per episode."""
+    s = StochasticityScheduler(start=0.8, end=0.2, total_episodes=10)
+    history = [s.step(t) for t in range(10)]
+    assert len(history) == 10
+    assert abs(history[0] - s.start) < 1e-9
