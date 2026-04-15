@@ -265,7 +265,11 @@ Examples:
                        help='Simulator type: sim8 (adapted), sim8_original (neural T5+VAE), state_machine, or hybrid (state_machine + sim8 dynamics). Default: sim8')
     parser.add_argument('--stochasticity', type=float, default=0.5,
                        help='Hybrid simulator: sim8 influence (0.0=pure state machine, 0.5=balanced, 1.0=max sim8). Default: 0.5')
-    
+    parser.add_argument('--stochasticity_start', type=float, default=None,
+                       help='Hybrid simulator: cosine schedule start value (e.g. 0.8). Enables adaptive schedule when set alongside --stochasticity_end.')
+    parser.add_argument('--stochasticity_end', type=float, default=None,
+                       help='Hybrid simulator: cosine schedule end value (e.g. 0.2). Enables adaptive schedule when set alongside --stochasticity_start.')
+
     # ===== REWARD MODE (per paper.tex) =====
     parser.add_argument('--reward_mode', type=str, default='baseline',
                        choices=['baseline', 'augmented'],
@@ -427,6 +431,11 @@ Examples:
         "reward_mode": args.reward_mode,
         "simulator": args.simulator,
         "stochasticity": args.stochasticity if args.simulator == "hybrid" else None,
+        "stochasticity_schedule": (
+            {"type": "cosine", "start": args.stochasticity_start, "end": args.stochasticity_end}
+            if args.simulator == "hybrid" and args.stochasticity_start is not None
+            else None
+        ),
         "timestamp": datetime.now().isoformat(),
         "episodes": args.episodes,
         "max_turns_per_episode": args.turns,
@@ -490,7 +499,14 @@ Examples:
     print(f"Learning rate: {args.lr}")
     print(f"Gamma: {args.gamma}")
     print(f"Device: {args.device}")
-    print(f"Simulator: {args.simulator}" + (f" (stochasticity={args.stochasticity})" if args.simulator == "hybrid" else ""))
+    if args.simulator == "hybrid":
+        if args.stochasticity_start is not None:
+            sim_str = f" (cosine schedule: {args.stochasticity_start}→{args.stochasticity_end})"
+        else:
+            sim_str = f" (stochasticity={args.stochasticity})"
+    else:
+        sim_str = ""
+    print(f"Simulator: {args.simulator}{sim_str}")
     print(f"Reward Mode: {args.reward_mode.upper()}")
     print()
     if args.reward_mode == "baseline":
@@ -597,6 +613,8 @@ Examples:
         verbose=args.verbose,
         simulator_type=args.simulator,
         stochasticity=args.stochasticity,
+        stochasticity_start=args.stochasticity_start,
+        stochasticity_end=args.stochasticity_end,
         termination_strategy=args.termination,
         state_representation=args.state_representation,
         option_granularity=args.option_granularity,
