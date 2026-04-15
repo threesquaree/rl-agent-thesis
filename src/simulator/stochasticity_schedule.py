@@ -16,6 +16,8 @@ class StochasticityScheduler:
         self.start = start
         self.end = end
         self.total = total_episodes
+        if total_episodes < 2:
+            raise ValueError(f"total_episodes must be >= 2, got {total_episodes}")
         self.current_value: float = start  # primed at start before episode 0
 
     def step(self, episode: int) -> float:

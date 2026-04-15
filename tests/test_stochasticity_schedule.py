@@ -52,3 +52,9 @@ def test_step_beyond_total_clamps_to_end():
     s = StochasticityScheduler(start=0.8, end=0.2, total_episodes=100)
     val = s.step(200)
     assert abs(val - 0.2) < 1e-6
+
+
+def test_raises_for_single_episode():
+    import pytest
+    with pytest.raises(ValueError, match="total_episodes"):
+        StochasticityScheduler(start=0.8, end=0.2, total_episodes=1)
