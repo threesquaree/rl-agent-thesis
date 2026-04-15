@@ -20,6 +20,7 @@ import os
 from typing import Dict, Any, Optional, List
 from src.environment.env import MuseumDialogueEnv
 from src.simulator import get_simulator
+from src.simulator.stochasticity_schedule import StochasticityScheduler
 from src.visualization.training_monitor import TrainingMonitor
 from src.visualization.live_training_monitor import LiveTrainingMonitor
 from src.visualization.metrics_tracker import MetricsTracker
@@ -139,6 +140,8 @@ class HRLTrainingLoop:
                  map_interval: int = 50, verbose: bool = False,
                  simulator_type: str = "sim8",
                  stochasticity: float = 0.5,
+                 stochasticity_start: float = None,
+                 stochasticity_end: float = None,
                  termination_strategy: str = "learned",
                  state_representation: str = "dialoguebert",
                  option_granularity: str = "medium",
@@ -246,7 +249,20 @@ class HRLTrainingLoop:
         )
         if simulator_type != "sim8":
             print(f"[Training] Using simulator: {simulator_type}")
-        
+
+        # Adaptive stochasticity schedule (Hybrid simulator only)
+        if simulator_type == "hybrid" and stochasticity_start is not None:
+            self.stoch_scheduler = StochasticityScheduler(
+                start=stochasticity_start,
+                end=stochasticity_end,
+                total_episodes=max_episodes,
+            )
+            self.simulator.stochasticity = stochasticity_start  # prime before episode 1
+        else:
+            self.stoch_scheduler = None  # static mode, no-op
+
+        self.stochasticity_history: list = []  # per-episode log
+
         # Initialize training monitor for logging and statistics
         self.monitor = TrainingMonitor()
         
@@ -458,6 +474,14 @@ class HRLTrainingLoop:
                     print(f"\n[{self.experiment_name}] [EPISODE] {self.current_episode}/{self.max_episodes}")
                     print("-" * 40)
                 
+                # Advance stochasticity schedule (no-op when scheduler is None)
+                if self.stoch_scheduler is not None:
+                    self.simulator.stochasticity = self.stoch_scheduler.step(episode)
+                self.stochasticity_history.append(
+                    self.stoch_scheduler.current_value if self.stoch_scheduler is not None
+                    else getattr(self.simulator, 'stochasticity', None)
+                )
+
                 # Run single episode
                 episode_reward, episode_length, episode_time, episode_timing = self._run_episode()
                 self.episode_rewards.append(episode_reward)
