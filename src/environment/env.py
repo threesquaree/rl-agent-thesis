@@ -317,6 +317,8 @@ class MuseumDialogueEnv(gym.Env):
         self.response_type_sum = 0.0  # Response type reward tracking
         self.deliberation_sum = 0.0  # H1 termination tuning: track deliberation cost
         self.action_repeat_sum = 0.0  # Action repetition penalty tracking
+        self.trajectory_reward_sum = 0.0
+        self.terminal_bonus_sum = 0.0
         
         # Note: Trend tracking removed to match paper specification
         
@@ -603,275 +605,40 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         
         exhibit_exhausted_initial = self._is_exhibit_exhausted(ex_id)
         
-        # ===== REWARD CALCULATION (per paper.tex Section 4.7, lines 681-709) =====
-        # Simplified reward function with configurable weights
-        
-        # Engagement reward (per paper.tex line 681 / thesis Section 5.1)
-        # SMDP Coverage Fix: Zero engagement at exhausted exhibits if flag is set
-        explain_subactions = ["ExplainNewFact", "ClarifyFact", "RepeatFact"]
-        if self.zero_engagement_exhausted and exhibit_exhausted_initial and subaction in explain_subactions:
-            engagement_reward = 0.0  # No engagement reward at exhausted exhibits
-            if verbose:
-                print(f"🚫 ZERO ENGAGEMENT: engagement=0 (Explain at exhausted exhibit)")
-        elif self.centred_engagement:
-            # Centred engagement (thesis Eq. 2): r^ceng_t = w_e * (dwell_t - d_bar_t)
-            # Update EMA before computing reward so the baseline reflects prior history
-            self._dwell_ema = (1 - self.dwell_ema_alpha) * self._dwell_ema + self.dwell_ema_alpha * self.dwell
-            engagement_reward = self.w_engagement * (self.dwell - self._dwell_ema)
-            if verbose:
-                print(f"📊 CENTRED ENGAGEMENT: {engagement_reward:.3f} (dwell={self.dwell:.3f}, ema={self._dwell_ema:.3f})")
-        else:
-            engagement_reward = max(0.0, self.dwell) * self.w_engagement
-        
-        # Novelty reward computation
-        # Initialize broadened novelty locals (needed for info dict regardless of branch)
-        bnov_new = 0.0
-        bnov_rep = 0.0
-        bnov_clar = 0.0
-        bnov_ask = 0.0
-        bnov_stale = 0.0
-        bnov_transition = 0.0
-
-        # ===== ExplainNewFact DIMINISHING RETURNS =====
-        # Decay multiplier: 1.0 on first use, decay_rate^(n-1) on nth consecutive use.
-        # Floored at enf_decay_floor so ExplainNewFact always yields some reward.
-        enf_count = sum(self._enf_history)
-        if subaction == "ExplainNewFact" and enf_count > 1:
-            enf_decay = max(self.enf_decay_floor, self.enf_decay_rate ** (enf_count - 1))
-            if verbose:
-                print(f"📉 ENF DECAY: ×{enf_decay:.3f} (enf_in_window={enf_count}/{self.enf_window})")
-        else:
-            enf_decay = 1.0
-
-        if self.broadened_novelty:
-            # Broadened novelty (thesis Eq. 5): rewards multiple content-advancing actions
-            # ENF diminishing returns applied only to bnov_new; other components unaffected.
-            bnov_new = self.alpha_new * enf_decay if subaction == "ExplainNewFact" and len(new_fact_ids) > 0 else 0.0
-            bnov_rep = self.alpha_rep if subaction == "RepeatFact" else 0.0
-            bnov_clar = self.alpha_clar if subaction == "ClarifyFact" else 0.0
-            # Ask bonus with diminishing returns: full bonus on 1st, halved on 2nd, zero on 3rd+
-            if subaction in ("AskOpinion", "AskMemory", "AskClarification"):
-                if self._consecutive_same_action <= 0:
-                    bnov_ask = self.alpha_ask  # Full bonus on first
-                elif self._consecutive_same_action == 1:
-                    bnov_ask = self.alpha_ask * 0.5  # Halved on second consecutive
-                else:
-                    bnov_ask = 0.0  # No bonus on 3rd+ consecutive
-            # Transition novelty: reward for transitioning (especially from exhausted exhibits)
-            if is_transition_action:
-                bnov_transition = self.alpha_transition if exhibit_exhausted_initial else self.alpha_transition * 0.5
-            # Staleness: penalty for being at exhausted exhibit (non-Explain actions only,
-            # since Explain at exhausted is already penalized by exhaustion_penalty)
-            # Transitions are exempt from stale penalty (they ARE the solution)
-            bnov_stale = -self.alpha_stale if (exhibit_exhausted_initial and subaction not in explain_subactions and not is_transition_action) else 0.0
-
-            novelty_reward = bnov_new + bnov_rep + bnov_clar + bnov_ask + bnov_stale + bnov_transition
-
-            if verbose:
-                components = []
-                if bnov_new > 0: components.append(f"new={bnov_new:.2f}")
-                if bnov_rep > 0: components.append(f"rep={bnov_rep:.2f}")
-                if bnov_clar > 0: components.append(f"clar={bnov_clar:.2f}")
-                if bnov_ask > 0: components.append(f"ask={bnov_ask:.2f}")
-                if bnov_transition > 0: components.append(f"transition={bnov_transition:.2f}")
-                if bnov_stale < 0: components.append(f"stale={bnov_stale:.2f}")
-                if components:
-                    print(f"📚 BROADENED NOVELTY: {novelty_reward:.3f} ({', '.join(components)})")
-
-            # Track sub-components
-            self.bnov_new_sum += bnov_new
-            self.bnov_rep_sum += bnov_rep
-            self.bnov_clar_sum += bnov_clar
-            self.bnov_ask_sum += bnov_ask
-            self.bnov_stale_sum += bnov_stale
-            self.bnov_transition_sum += bnov_transition
-        else:
-            # Standard novelty: r^nov_t = novelty_per_fact × |new_facts| (paper.tex line 681)
-            # ENF diminishing returns applied as a multiplier on the per-fact reward.
-            novelty_reward = len(new_fact_ids) * self.novelty_per_fact * enf_decay
-            if verbose and len(new_fact_ids) > 0:
-                print(f"📚 NOVELTY REWARD: +{novelty_reward:.3f} ({len(new_fact_ids)} new fact(s): {new_fact_ids[:3]}, enf_decay={enf_decay:.3f})")
-        
-        # ===== EXHAUSTION PENALTY (H6 fix) =====
-        # Penalize ANY Explain subaction on exhausted exhibits to create gradient toward transitions
-        # This addresses the H6 problem where agents get stuck at exhausted exhibits with no learning signal
-        # NOTE: Must include ClarifyFact/RepeatFact because ExplainNewFact is MASKED when exhausted!
-        # SMDP Coverage Fix: Use configurable exhaustion penalty (default -0.5, try -2.0 for stronger signal)
-        exhaustion_penalty = 0.0
-        if exhibit_exhausted_initial and subaction in explain_subactions:
-            exhaustion_penalty = self.exhaustion_penalty_value  # Configurable penalty
-            if verbose:
-                print(f"⛔ EXHAUSTION PENALTY: {exhaustion_penalty:.2f} ({subaction} on exhausted exhibit - should transition!)")
-        
-        # ===== ACTION REPETITION PENALTY (anti-spam fix) =====
-        # Penalizes consecutive same-subaction selection to break ExplainNewFact and AskClarification spam
-        # Penalty scales linearly: -penalty * max(0, consecutive_count - threshold)
-        if subaction == self._last_subaction:
-            self._consecutive_same_action += 1
-        else:
-            self._consecutive_same_action = 0
-        self._last_subaction = subaction
-
-        action_repeat_penalty = 0.0
-        repeats_over_threshold = self._consecutive_same_action - self.action_repeat_threshold
-        if repeats_over_threshold > 0:
-            action_repeat_penalty = -self.action_repeat_penalty * (repeats_over_threshold ** 2)
-            if verbose:
-                print(f"🔄 ACTION REPEAT PENALTY: {action_repeat_penalty:.2f} "
-                      f"({subaction} x{self._consecutive_same_action + 1} consecutive, threshold={self.action_repeat_threshold})")
-
-        # Responsiveness: +w_responsiveness (answer) / -0.6*w_responsiveness (deflect) - paper.tex lines 682-688
-        responsiveness_reward = 0.0
-        if self._last_user_response_type == "question":
-            if len(new_fact_ids) > 0:
-                # Agent provided NEW facts this turn (answered the question) → POSITIVE REWARD
-                responsiveness_reward = +self.w_responsiveness
-                if verbose:
-                    print(f"✅ RESPONSIVENESS: +{responsiveness_reward:.2f} (answered visitor's question with {len(new_fact_ids)} fact(s))")
-            elif option == "AskQuestion":
-                # Agent deflected with counter-question instead of answering → NEGATIVE PUNISHMENT
-                responsiveness_reward = -self.w_responsiveness * 0.6  # 60% of positive reward
-                if verbose:
-                    print(f"❌ RESPONSIVENESS: {responsiveness_reward:.2f} (deflected visitor's question with counter-question)")
-
-        # ===== RESPONSE TYPE REWARD (thesis extension) =====
-        # Direct reward/penalty based on visitor's response type classification
-        # Positive for engaged reactions (acknowledgment, follow-up), negative for confusion/silence
-        response_type_reward = 0.0
-        if self.response_type_reward:
-            rtype = self._last_user_response_type
-            raw_value = self.response_type_reward_values.get(rtype, 0.0)
-            response_type_reward = self.w_response_type * raw_value
-            if verbose and response_type_reward != 0.0:
-                print(f"💬 RESPONSE TYPE REWARD: {response_type_reward:.3f} (type={rtype}, raw={raw_value:.2f})")
-        
-        # Conclude: w_conclude × |exhibits_covered| - paper.tex lines 716-721
-        conclude_bonus = 0.0
-        if option == "Conclude":
-            # Count exhibits with at least 1 fact mentioned
-            exhibits_with_facts = sum(1 for fact_set in self.facts_mentioned_per_exhibit.values() 
-                                     if len(fact_set) > 0)
-            # Bonus scales with weight per exhibit covered
-            conclude_bonus = exhibits_with_facts * self.w_conclude
-            if verbose:
-                print(f"🎯 CONCLUDE BONUS: +{conclude_bonus:.2f} ({exhibits_with_facts} exhibits covered)")
-        
-        # Transition insufficiency: -0.20 (0 facts) / -0.16 (1 fact) - paper.tex lines 698-709
-        transition_insufficiency_penalty = 0.0
-        if is_transition_action:
-            current_ex_id = self._get_current_exhibit()
-            facts_at_current = len(self.facts_mentioned_per_exhibit[current_ex_id])
-            
-            # 3-turn exemption: no penalty if recent successful transition (paper.tex line 707)
-            recent_success = (self.turn_count - self.last_successful_transition_turn <= 3)
-            
-            if not recent_success:
-                if facts_at_current == 0:
-                    transition_insufficiency_penalty = -0.30
-                    if verbose:
-                        print(f"⚠️ TRANSITION INSUFFICIENCY: {transition_insufficiency_penalty:.2f} (0 facts at current exhibit)")
-                elif facts_at_current == 1:
-                    transition_insufficiency_penalty = -0.20
-                    if verbose:
-                        print(f"⚠️ TRANSITION INSUFFICIENCY: {transition_insufficiency_penalty:.2f} (only 1 fact at current exhibit)")
-        
-        # Transition exploration bonus: Reward for moving from exhausted exhibits to less-visited ones
-        # This provides a POSITIVE incentive to explore new exhibits when current is exhausted
-        transition_exploration_bonus = 0.0
-        if is_transition_action and target_exhibit and target_exhibit in self.exhibit_keys:
-            current_ex_id = self._get_current_exhibit()
-            current_exhausted = exhibit_exhausted_initial  # Use initial exhaustion status before this turn
-            
-            # Check if target exhibit is less visited than current
-            current_facts_mentioned = len(self.facts_mentioned_per_exhibit[current_ex_id])
-            target_facts_mentioned = len(self.facts_mentioned_per_exhibit[target_exhibit])
-            target_total_facts = len(self.knowledge_graph.get_exhibit_facts(target_exhibit))
-            
-            # BONUS TIER 1: Transitioning from exhausted exhibit to completely empty one (highest bonus)
-            if current_exhausted and target_facts_mentioned == 0 and target_total_facts > 0:
-                transition_exploration_bonus = +0.30
-                if verbose:
-                    print(f"🌟 EXPLORATION BONUS (HIGH): +{transition_exploration_bonus:.2f} (exhausted→empty: {current_ex_id}→{target_exhibit})")
-            
-            # BONUS TIER 2: Transitioning to exhibit with significantly fewer facts mentioned (medium bonus)
-            elif current_facts_mentioned >= 3 and target_facts_mentioned < current_facts_mentioned:
-                # Only give bonus if current is near exhaustion or exhausted
-                current_remaining = len([f for f in self.knowledge_graph.get_exhibit_facts(current_ex_id) 
-                                       if self.knowledge_graph.extract_fact_id(f) not in self.facts_mentioned_per_exhibit[current_ex_id]])
-                if current_remaining <= 2:  # Current exhibit nearly exhausted
-                    transition_exploration_bonus = +0.15
-                    if verbose:
-                        print(f"🌟 EXPLORATION BONUS (MED): +{transition_exploration_bonus:.2f} (near-exhausted→less-visited: {current_ex_id}[{current_facts_mentioned}]→{target_exhibit}[{target_facts_mentioned}])")
-        
-        # Question-asking reward (hybrid design - H2)
-        # Note: Uses last user utterance (from previous turn) to evaluate response quality
-        question_asking_reward = self._compute_question_asking_reward(
-            option=option,
-            spacing=self.turn_count - self.last_question_turn,
-            response_length=len(self.last_user_utterance.split()) if self.last_user_utterance else 0,
-            verbose=verbose
-        )
-        
-        # Update last question turn tracker
-        if option == "AskQuestion":
-            self.last_question_turn = self.turn_count
-        
-        # ===== SMDP COVERAGE FIX: TRANSITION IMMEDIATE BONUS =====
-        # Immediate bonus for successful exhibit transitions (creates Q-value separation)
-        transition_immediate_bonus = 0.0
-        if is_transition_action and target_exhibit and target_exhibit in self.exhibit_keys:
-            current_ex_id = self._get_current_exhibit()
-            if target_exhibit != current_ex_id:  # Actual transition to different exhibit
-                transition_immediate_bonus = self.transition_bonus
-                if verbose and transition_immediate_bonus > 0:
-                    print(f"🎁 TRANSITION BONUS: +{transition_immediate_bonus:.2f} (successful transition)")
-        
         # Clear this turn's tracking for next turn
         self.facts_mentioned_this_turn = set()
-        
-        # ===== REWARD CALCULATION (per paper.tex Section 4.7) =====
-        # Baseline: R_t = r^eng + r^nov (engagement + novelty only)
-        # Engagement-gated: R_t = dwell * novelty_credit (engagement modulates novelty)
-        # Note: exhaustion_penalty is ALWAYS applied (both baseline and augmented) to fix H6 stuck behavior
-        # Note: response_type_reward is applied in BOTH modes when enabled (independent of reward_mode)
-        # Augmented (H2): R_t = baseline + r^resp + r^conclude + r^trans + r^explore + r^ask
-        if self.engagement_gated_novelty:
-            # Multiplicative gating: novelty only pays off when visitor is engaged
-            # Use raw dwell (not centred) as the gate so the signal is always positive
-            gated_reward = max(0.0, self.dwell) * novelty_reward
-            if verbose:
-                print(f"🔗 ENGAGEMENT-GATED NOVELTY: {gated_reward:.3f} (dwell={self.dwell:.3f} × novelty={novelty_reward:.3f})")
-            core_reward = gated_reward
-        else:
-            core_reward = engagement_reward + novelty_reward
 
-        if self.reward_mode == "baseline":
-            step_reward = (core_reward + exhaustion_penalty + action_repeat_penalty +
-                          transition_immediate_bonus + completion_bonus + response_type_reward)
-        else:
-            # Augmented reward (H2): includes all auxiliary components
-            step_reward = (core_reward + responsiveness_reward +
-                          conclude_bonus + transition_insufficiency_penalty + transition_exploration_bonus +
-                          question_asking_reward + exhaustion_penalty + action_repeat_penalty +
-                          transition_immediate_bonus + completion_bonus + response_type_reward)
+        # ===== REWARD CALCULATION (prospect theory asymmetric delta) =====
+        # R_t = α·max(0,Δdwell) − β·max(0,−Δdwell) + R_terminal·coverage
+        # β/α = 2.25 from Kahneman & Tversky (1979) prospect theory
+        delta_dwell = self.dwell - self._previous_dwell
+        trajectory_reward = (
+            self.alpha * max(0.0, delta_dwell)
+            - self.beta * max(0.0, -delta_dwell)
+        )
+
+        # Terminal coverage bonus — absorbs novelty signal at episode end
+        terminal_bonus = 0.0
+        if done:
+            exhibits_covered = sum(
+                1 for ex in self.exhibit_keys
+                if len(self.facts_mentioned_per_exhibit[ex]) > 0
+            )
+            terminal_bonus = self.terminal_coverage_weight * (exhibits_covered / self.n_exhibits)
+
+        step_reward = trajectory_reward + terminal_bonus - self.deliberation_cost
+
+        if verbose:
+            print(f"📈 TRAJECTORY REWARD: {trajectory_reward:.3f} "
+                  f"(Δdwell={delta_dwell:+.3f}, dwell={self.dwell:.3f}, prev={self._previous_dwell:.3f})")
+            if terminal_bonus > 0:
+                print(f"🏁 TERMINAL BONUS: +{terminal_bonus:.3f} "
+                      f"({exhibits_covered}/{self.n_exhibits} exhibits covered)")
         
-        # ===== DELIBERATION COST (Harb et al., 2018) =====
-        # Per-step penalty for remaining in an option, encouraging termination/switching
-        # This counteracts positive A_O that suppresses termination gradients
-        step_reward = step_reward - self.deliberation_cost
-        
-        # Track component contributions for analysis (always track for debugging)
-        self.engagement_sum += engagement_reward
-        self.novelty_sum += novelty_reward
-        self.responsiveness_sum += responsiveness_reward
-        self.conclude_sum += conclude_bonus
-        self.transition_sum += transition_insufficiency_penalty
-        self.question_sum += question_asking_reward
-        self.exploration_sum += transition_exploration_bonus
-        self.exhaustion_sum += exhaustion_penalty  # H6 fix: track exhaustion penalties
-        self.action_repeat_sum += action_repeat_penalty  # Action repetition penalty tracking
-        self.response_type_sum += response_type_reward  # Response type reward tracking
-        self.deliberation_sum -= self.deliberation_cost  # Track deliberation cost (negative)
+        # Track reward components for analysis
+        self.trajectory_reward_sum = getattr(self, 'trajectory_reward_sum', 0.0) + trajectory_reward
+        self.terminal_bonus_sum = getattr(self, 'terminal_bonus_sum', 0.0) + terminal_bonus
+        self.deliberation_sum -= self.deliberation_cost
         
         # Store current dwell for NEXT turn's reward
         self._previous_dwell = self.dwell
@@ -963,22 +730,8 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         if done:
             info['component_breakdown'] = {
                 'total_reward': self.session_reward,
-                'engagement_contribution': self.engagement_sum,
-                'novelty_contribution': self.novelty_sum,
-                'bnov_new_contribution': self.bnov_new_sum,
-                'bnov_rep_contribution': self.bnov_rep_sum,
-                'bnov_clar_contribution': self.bnov_clar_sum,
-                'bnov_ask_contribution': self.bnov_ask_sum,
-                'bnov_stale_contribution': self.bnov_stale_sum,
-                'bnov_transition_contribution': self.bnov_transition_sum,
-                'responsiveness_contribution': self.responsiveness_sum,
-                'conclude_contribution': self.conclude_sum,
-                'transition_contribution': self.transition_sum,
-                'question_contribution': self.question_sum,
-                'exploration_contribution': self.exploration_sum,
-                'exhaustion_contribution': self.exhaustion_sum,  # H6 fix
-                'action_repeat_contribution': self.action_repeat_sum,  # Anti-spam penalty
-                'response_type_contribution': self.response_type_sum,  # Response type reward
+                'trajectory_reward_contribution': self.trajectory_reward_sum,
+                'terminal_bonus_contribution': self.terminal_bonus_sum,
                 'deliberation_contribution': self.deliberation_sum  # H1 termination tuning
             }
         

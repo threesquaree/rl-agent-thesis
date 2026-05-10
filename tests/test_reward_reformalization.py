@@ -44,3 +44,42 @@ def test_beta_from_env_var():
     env = make_env()
     assert env.beta == 3.0
     os.environ.pop("HRL_BETA")
+
+
+def test_trajectory_reward_gain():
+    """dwell 0.2 → 0.7: R = α × 0.5 = +0.50"""
+    env = make_env()
+    env.reset()
+    env._previous_dwell = 0.2
+    env.dwell = 0.7
+    env.alpha = 1.0
+    env.beta = 2.25
+    delta = env.dwell - env._previous_dwell
+    reward = env.alpha * max(0.0, delta) - env.beta * max(0.0, -delta)
+    assert abs(reward - 0.50) < 1e-6
+
+
+def test_trajectory_reward_loss():
+    """dwell 0.7 → 0.2: R = -β × 0.5 = -1.125"""
+    env = make_env()
+    env.reset()
+    env._previous_dwell = 0.7
+    env.dwell = 0.2
+    env.alpha = 1.0
+    env.beta = 2.25
+    delta = env.dwell - env._previous_dwell
+    reward = env.alpha * max(0.0, delta) - env.beta * max(0.0, -delta)
+    assert abs(reward - (-1.125)) < 1e-6
+
+
+def test_trajectory_reward_flat():
+    """dwell flat 0.5 → 0.5: R = 0.0"""
+    env = make_env()
+    env.reset()
+    env._previous_dwell = 0.5
+    env.dwell = 0.5
+    env.alpha = 1.0
+    env.beta = 2.25
+    delta = env.dwell - env._previous_dwell
+    reward = env.alpha * max(0.0, delta) - env.beta * max(0.0, -delta)
+    assert abs(reward - 0.0) < 1e-6
