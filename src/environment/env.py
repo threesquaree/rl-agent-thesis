@@ -618,6 +618,7 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         )
 
         # Terminal coverage bonus — absorbs novelty signal at episode end
+        exhibits_covered = 0
         terminal_bonus = 0.0
         if done:
             exhibits_covered = sum(
@@ -684,23 +685,9 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
             "option": "Conclude" if auto_concluded else option,  # Mark as Conclude if auto-concluded
             "subaction": "WrapUp" if auto_concluded else subaction,  # Mark as WrapUp if auto-concluded
             "terminated_option": terminate_option,
-            "reward_engagement": engagement_reward,
-            "reward_novelty": novelty_reward,
-            "reward_bnov_new": bnov_new,
-            "reward_bnov_rep": bnov_rep,
-            "reward_bnov_clar": bnov_clar,
-            "reward_bnov_ask": bnov_ask,
-            "reward_bnov_stale": bnov_stale,
-            "reward_bnov_transition": bnov_transition,
-            "broadened_novelty_active": self.broadened_novelty,
-            "reward_responsiveness": responsiveness_reward,
-            "reward_conclude": conclude_bonus,
-            "reward_transition_insufficiency": transition_insufficiency_penalty,
-            "reward_transition_exploration": transition_exploration_bonus,
-            "reward_question_asking": question_asking_reward,
-            "reward_response_type": response_type_reward,
-            "reward_completion": completion_bonus,
-            "reward_action_repeat": action_repeat_penalty,
+            "reward_trajectory": trajectory_reward,
+            "reward_terminal_bonus": terminal_bonus,
+            "reward_deliberation_cost": -self.deliberation_cost,
             "auto_concluded": auto_concluded,  # Whether episode was automatically concluded due to 100% coverage
             "dwell": self.dwell,
             "total_reward": step_reward,
