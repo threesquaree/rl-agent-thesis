@@ -417,3 +417,4 @@ The most critical next step is **gathering data that better proxies real people*
 - **Algorithm improvements**: Better credit assignment, reward shaping, termination learning
 - **Architecture exploration**: Alternative hierarchical structures, attention mechanisms
 - **Multi-modal inputs**: Incorporate visual cues, visitor body language, environmental context
+

@@ -61,6 +61,11 @@ class MetricsTracker:
         # Current episode option tracking (reset each episode)
         self.current_episode_options = defaultdict(int)
         self.current_episode_subactions = defaultdict(int)  # H6: Per-episode subaction tracking
+
+        # Response type tracking (sim8 visitor behaviour)
+        self.response_type_counts = defaultdict(int)
+        self.episode_response_type_usage = []
+        self.current_episode_response_types = defaultdict(int)
         
         # Success rates
         self.transition_attempts = 0
@@ -159,6 +164,10 @@ class MetricsTracker:
         # Save current episode subaction usage and reset (H6: for diversity analysis)
         self.episode_subaction_usage.append(dict(self.current_episode_subactions))
         self.current_episode_subactions = defaultdict(int)
+
+        # Save current episode response type usage and reset
+        self.episode_response_type_usage.append(dict(self.current_episode_response_types))
+        self.current_episode_response_types = defaultdict(int)
         
         # H1 Termination Tuning: Compute and store option entropy
         episode_option_counts = self.episode_option_usage[-1]
@@ -292,6 +301,10 @@ class MetricsTracker:
         """Update with single turn data"""
         self.turn_rewards.append(turn_data.get("total_reward", 0.0))
         self.turn_dwells.append(turn_data.get("dwell", 0.0))
+
+        response_type = turn_data.get("response_type", "unknown")
+        self.response_type_counts[response_type] += 1
+        self.current_episode_response_types[response_type] += 1
         
         # For flat RL, use flat_action_name if available, otherwise use option
         flat_action_name = turn_data.get("flat_action_name")
@@ -496,6 +509,8 @@ class MetricsTracker:
             "episode_option_usage": self.episode_option_usage,
             "option_counts": dict(self.option_counts),
             "flat_action_counts": dict(getattr(self, 'flat_action_counts', {})),
+            "response_type_counts": dict(self.response_type_counts),
+            "episode_response_type_usage": self.episode_response_type_usage,
             "option_durations": {k: list(v) for k, v in self.option_durations.items()},
             "option_transitions": {k: dict(v) for k, v in self.option_transitions.items()},
             # Subaction data (H6: option granularity analysis)

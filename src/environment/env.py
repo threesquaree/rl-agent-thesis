@@ -21,6 +21,7 @@ References:
 - Bozkir, E., et al. (2021). Eye tracking in virtual learning environments.
 """
 
+from collections import deque
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
@@ -132,6 +133,7 @@ class MuseumDialogueEnv(gym.Env):
         # rather than monologue-lecturing through every fact sequentially.
         self.enf_decay_rate = float(os.environ.get("HRL_ENF_DECAY_RATE", "0.65"))
         self.enf_decay_floor = float(os.environ.get("HRL_ENF_DECAY_FLOOR", "0.25"))
+        self.enf_window = int(os.environ.get("HRL_ENF_WINDOW", "6"))
 
         # ===== RESPONSE TYPE FEATURES (thesis extension) =====
         # Response type as state feature: 6-dim one-hot (acknowledgment, follow_up_question, question, statement, confusion, silence)
@@ -279,8 +281,8 @@ class MuseumDialogueEnv(gym.Env):
         self._last_subaction = None
         self._consecutive_same_action = 0
 
-        # ExplainNewFact consecutive counter (for diminishing returns)
-        self._consecutive_explain_new_fact = 0
+        # ENF rolling window for diminishing returns (replaces consecutive counter)
+        self._enf_history = deque(maxlen=self.enf_window)
         
         # Transition insufficiency tracking (per paper.tex Section 4.7, line 707)
         # Track last successful transition turn for 3-turn exemption rule
@@ -443,11 +445,8 @@ class MuseumDialogueEnv(gym.Env):
         else:
             self.consecutive_explain_turns = 0
 
-        # Track consecutive ExplainNewFact for diminishing returns (reset on ANY other subaction)
-        if subaction == "ExplainNewFact":
-            self._consecutive_explain_new_fact += 1
-        else:
-            self._consecutive_explain_new_fact = 0
+        # Track ENF usage in rolling window for diminishing returns
+        self._enf_history.append(1 if subaction == "ExplainNewFact" else 0)
         
         # Get current exhibit ID for response generation and reward calculation
         ex_id = self._get_current_exhibit()
@@ -629,14 +628,13 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         # ===== ExplainNewFact DIMINISHING RETURNS =====
         # Decay multiplier: 1.0 on first use, decay_rate^(n-1) on nth consecutive use.
         # Floored at enf_decay_floor so ExplainNewFact always yields some reward.
-        # Resets to 1.0 the moment any other subaction is taken.
-        if subaction == "ExplainNewFact" and self._consecutive_explain_new_fact > 1:
-            enf_decay = max(self.enf_decay_floor,
-                            self.enf_decay_rate ** (self._consecutive_explain_new_fact - 1))
+        enf_count = sum(self._enf_history)
+        if subaction == "ExplainNewFact" and enf_count > 1:
+            enf_decay = max(self.enf_decay_floor, self.enf_decay_rate ** (enf_count - 1))
+            if verbose:
+                print(f"📉 ENF DECAY: ×{enf_decay:.3f} (enf_in_window={enf_count}/{self.enf_window})")
         else:
             enf_decay = 1.0
-        if verbose and enf_decay < 1.0:
-            print(f"📉 ENF DECAY: ×{enf_decay:.3f} (consecutive={self._consecutive_explain_new_fact})")
 
         if self.broadened_novelty:
             # Broadened novelty (thesis Eq. 5): rewards multiple content-advancing actions
@@ -710,7 +708,7 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         action_repeat_penalty = 0.0
         repeats_over_threshold = self._consecutive_same_action - self.action_repeat_threshold
         if repeats_over_threshold > 0:
-            action_repeat_penalty = -self.action_repeat_penalty * repeats_over_threshold
+            action_repeat_penalty = -self.action_repeat_penalty * (repeats_over_threshold ** 2)
             if verbose:
                 print(f"🔄 ACTION REPEAT PENALTY: {action_repeat_penalty:.2f} "
                       f"({subaction} x{self._consecutive_same_action + 1} consecutive, threshold={self.action_repeat_threshold})")

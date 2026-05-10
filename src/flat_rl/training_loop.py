@@ -97,11 +97,19 @@ class FlatTrainingLoop(HRLTrainingLoop):
 
         learning_rate = kwargs.get("learning_rate", 1e-4)
         gamma = kwargs.get("gamma", 0.99)
+        entropy_coef = kwargs.get("entropy_coef", 0.01)
+        entropy_decay_start = kwargs.get("entropy_decay_start", 0)
+        entropy_decay_end = kwargs.get("entropy_decay_end", kwargs.get("max_episodes", 500))
+        entropy_final = kwargs.get("entropy_final", 0.005)
 
         self.trainer = FlatActorCriticTrainer(
             agent=self.agent,
             learning_rate=learning_rate,
             gamma=gamma,
+            entropy_coef=entropy_coef,
+            entropy_decay_start=entropy_decay_start,
+            entropy_decay_end=entropy_decay_end,
+            entropy_final=entropy_final,
             device=self.device,
         )
 
@@ -418,6 +426,9 @@ class FlatTrainingLoop(HRLTrainingLoop):
             }
             self.detailed_logger.end_episode(episode_reward, episode_stats)
         
+        # Update entropy schedule before gradient update
+        self.trainer.set_episode(self.current_episode)
+
         # Update trainer if using actor-critic
         train_stats = None
         if self.use_actor_critic and len(self.episode_buffer["states"]) > 0:

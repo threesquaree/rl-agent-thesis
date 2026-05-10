@@ -22,6 +22,9 @@ class FlatActorCriticTrainer:
         gamma: float = 0.99,
         value_loss_coef: float = 0.5,
         entropy_coef: float = 0.01,
+        entropy_decay_start: int = 0,
+        entropy_decay_end: int = 500,
+        entropy_final: float = 0.005,
         max_grad_norm: float = 1.0,
         device: str = "cpu",
     ):
@@ -29,12 +32,26 @@ class FlatActorCriticTrainer:
         self.learning_rate = learning_rate
         self.gamma = gamma
         self.value_loss_coef = value_loss_coef
+        self.initial_entropy_coef = entropy_coef
         self.entropy_coef = entropy_coef
+        self.entropy_decay_start = entropy_decay_start
+        self.entropy_decay_end = entropy_decay_end
+        self.entropy_final = entropy_final
         self.max_grad_norm = max_grad_norm
         self.device = device
 
         self.optimizer = optim.Adam(self.agent.network.parameters(), lr=learning_rate)
         self.stats = defaultdict(list)
+
+    def set_episode(self, episode: int):
+        """Linearly decay entropy coefficient from initial to entropy_final."""
+        if episode < self.entropy_decay_start or self.entropy_decay_end <= self.entropy_decay_start:
+            return
+        if episode >= self.entropy_decay_end:
+            self.entropy_coef = self.entropy_final
+            return
+        progress = (episode - self.entropy_decay_start) / (self.entropy_decay_end - self.entropy_decay_start)
+        self.entropy_coef = self.initial_entropy_coef * (1 - progress) + self.entropy_final * progress
 
     def update(
         self,

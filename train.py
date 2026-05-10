@@ -181,9 +181,11 @@ Examples:
     parser.add_argument('--action-repeat-threshold', type=int, default=2,
                        help='Number of consecutive repeats before penalty kicks in (default: 2)')
     parser.add_argument('--enf-decay-rate', type=float, default=0.65,
-                       help='ExplainNewFact diminishing returns: geometric decay per consecutive use (default: 0.65)')
+                       help='ExplainNewFact diminishing returns: geometric decay per use in window (default: 0.65)')
     parser.add_argument('--enf-decay-floor', type=float, default=0.25,
                        help='ExplainNewFact diminishing returns: minimum decay multiplier (default: 0.25)')
+    parser.add_argument('--enf-window', type=int, default=6,
+                       help='Rolling window size for ENF decay counting (default: 6). Catches interleaved ENF patterns.')
     parser.add_argument('--w-responsiveness', type=float, default=0.5,
                        help='Responsiveness reward: +w_responsiveness (answer) / -0.6*w_responsiveness (deflect) (default: 0.5, increased for H2)')
     parser.add_argument('--w-conclude', type=float, default=0.4,
@@ -570,6 +572,7 @@ Examples:
     # ExplainNewFact diminishing returns
     os.environ["HRL_ENF_DECAY_RATE"] = str(args.enf_decay_rate)
     os.environ["HRL_ENF_DECAY_FLOOR"] = str(args.enf_decay_floor)
+    os.environ["HRL_ENF_WINDOW"] = str(args.enf_window)
 
     # H1 Advanced: Pass diversity reward coefficient
     os.environ["HRL_DIVERSITY_REWARD_COEF"] = str(args.diversity_reward_coef)
@@ -724,7 +727,21 @@ Examples:
         print(f"⚠️  Warning: Parameterization analysis failed: {e}")
         import traceback
         traceback.print_exc()
-    
+
+    # Generate flat MDP training report (flat mode only)
+    if args.mode == 'flat' or args.variant == 'h1':
+        print("\n" + "=" * 80)
+        print("GENERATING FLAT MDP TRAINING REPORT")
+        print("=" * 80)
+        try:
+            from tools.flat_training_report import generate_flat_training_report
+            report_path = generate_flat_training_report(str(exp_dir))
+            print(f"\n✓ Training report saved: {report_path}")
+        except Exception as e:
+            print(f"⚠️  Warning: Training report generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+
     # Calculate training duration
     training_duration_seconds = getattr(training_loop, 'training_duration_seconds', 0)
     training_duration_hours = training_duration_seconds / 3600
