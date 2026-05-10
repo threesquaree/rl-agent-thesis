@@ -112,3 +112,35 @@ def test_core_actions_present():
     for action in ["ExplainNewFact", "AskOpinion", "AskClarification",
                    "SummarizeAndSuggest", "WrapUp"]:
         assert action in all_subs, f"{action} missing from action space"
+
+
+def test_obs_dim_includes_trajectory():
+    env = make_env()
+    focus_dim = env.n_exhibits + 1
+    history_dim = env.n_exhibits + len([sa for opt in env.options for sa in env.subactions[opt]])
+    expected_total = focus_dim + history_dim + 64 + 64 + 4 + 2  # +2 for τ_t
+    assert env.observation_space.shape[0] == expected_total, (
+        f"Expected {expected_total}, got {env.observation_space.shape[0]}"
+    )
+
+
+def test_trajectory_feature_values():
+    env = make_env()
+    env.reset()
+    env.dwell = 0.75
+    env._previous_dwell = 0.50
+    obs = env._get_obs()
+    dwell_norm = obs[-2]
+    delta_dwell = obs[-1]
+    assert abs(dwell_norm - (2.0 * 0.75 - 1.0)) < 1e-5, f"dwell_norm wrong: {dwell_norm}"
+    assert abs(delta_dwell - 0.25) < 1e-5, f"delta_dwell wrong: {delta_dwell}"
+
+
+def test_trajectory_feature_at_reset():
+    env = make_env()
+    obs, _ = env.reset()
+    # After reset: dwell=0.0, _previous_dwell=0.0 → dwell_norm=-1.0, delta=0.0
+    dwell_norm = obs[-2]
+    delta_dwell = obs[-1]
+    assert abs(dwell_norm - (2.0 * 0.0 - 1.0)) < 1e-5, f"dwell_norm at reset wrong: {dwell_norm}"
+    assert abs(delta_dwell - 0.0) < 1e-5, f"delta_dwell at reset wrong: {delta_dwell}"

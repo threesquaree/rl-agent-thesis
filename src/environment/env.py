@@ -215,15 +215,18 @@ class MuseumDialogueEnv(gym.Env):
         context_dim = 64  # Projected DialogueBERT dialogue context
         subaction_availability_dim = 4  # Subaction availability indicators
         response_type_dim = 6 if self.response_type_feature else 0  # One-hot response type
+        trajectory_dim = 2  # τ_t = [dwell_t_norm, Δdwell_t]
 
         # Canonical ordering of response types for one-hot encoding
         self.response_type_labels = ["acknowledgment", "follow_up_question", "question", "statement", "confusion", "silence"]
 
-        total_obs_dim = focus_dim + history_dim + intent_dim + context_dim + subaction_availability_dim + response_type_dim
+        total_obs_dim = (focus_dim + history_dim + intent_dim + context_dim
+                         + subaction_availability_dim + response_type_dim + trajectory_dim)
 
         print(f"[Environment] Observation space: {total_obs_dim}-d "
-              f"(focus={focus_dim}, history={history_dim}, intent={intent_dim}, context={context_dim}, "
-              f"subaction_availability={subaction_availability_dim}, response_type={response_type_dim})")
+              f"(focus={focus_dim}, history={history_dim}, intent={intent_dim}, "
+              f"context={context_dim}, subaction_availability={subaction_availability_dim}, "
+              f"response_type={response_type_dim}, trajectory={trajectory_dim})")
         
         self.observation_space = spaces.Box(
             low=-10.0,  # Allow negative values after projection
@@ -851,8 +854,13 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
                 response_type_onehot[self.response_type_labels.index("statement")] = 1.0
             state_components.append(response_type_onehot)
 
-        obs = np.concatenate(state_components).astype(np.float32)
+        # τ_t trajectory feature: [dwell_t_norm, Δdwell_t]
+        # dwell_t_norm maps [0,1] → [-1,1]; Δdwell_t is naturally in [-1,1]
+        dwell_norm = float(2.0 * self.dwell - 1.0)
+        delta_dwell = float(self.dwell - self._previous_dwell)
+        state_components.append(np.array([dwell_norm, delta_dwell], dtype=np.float32))
 
+        obs = np.concatenate(state_components).astype(np.float32)
         return obs
 
     # ===== MUSEUM OVERVIEW =====
