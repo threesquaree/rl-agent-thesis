@@ -103,6 +103,7 @@ def test_new_action_present():
     env = make_env()
     all_subs = [sa for opt in env.options for sa in env.subactions[opt]]
     assert "RecoverEngagement" in all_subs
+    assert "RecoverEngagement" in env.subactions["Engage"]
 
 
 def test_core_actions_present():

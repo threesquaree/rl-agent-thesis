@@ -136,7 +136,7 @@ class MuseumDialogueEnv(gym.Env):
         #   Turn 3: novelty × decay_rate²         (default 0.42)
         #   Turn N: novelty × max(floor, decay_rate^(N-1))
         # Applies in BOTH standard and broadened novelty modes.
-        # Encourages the agent to interleave AskQuestion / ClarifyFact / RepeatFact
+        # Encourages the agent to interleave AskQuestion / RecoverEngagement
         # rather than monologue-lecturing through every fact sequentially.
         self.enf_decay_rate = float(os.environ.get("HRL_ENF_DECAY_RATE", "0.65"))
         self.enf_decay_floor = float(os.environ.get("HRL_ENF_DECAY_FLOOR", "0.25"))
@@ -434,9 +434,8 @@ class MuseumDialogueEnv(gym.Env):
         
         subaction = available_subactions[subaction_idx]
         
-        # FIX: Check if this is effectively a transition action (handles coarse option config)
-        # In coarse config, "SuggestMove" subaction under "Engage" option = transition
-        is_transition_action = option == "OfferTransition" or subaction == "SuggestMove"
+        # Check if this is a transition action
+        is_transition_action = option == "OfferTransition"
         
         # Handle option termination and transitions (Option-Critic style)
         if self.current_option != option or (terminate_option and self.current_option is not None):
@@ -1018,7 +1017,7 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         # In reward-aligned configs (coarse_4opt, coarse_3opt, coarse), Explain only has ExplainNewFact.
         # When exhibit is exhausted, the agent should NOT be able to select Explain at all.
         # This forces the agent to Transition or Engage instead of wasting turns.
-        # Function-based baseline (medium) has RepeatFact/ClarifyFact under Explain, so this doesn't apply.
+        # In reward-aligned configs, Explain only has ExplainNewFact, so masking applies cleanly.
         if "Explain" in available_options:
             explain_subactions = self.subactions.get("Explain", [])
             # Only apply to reward-aligned configs where Explain = [ExplainNewFact] only
@@ -1053,10 +1052,6 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
                 # Remove ExplainNewFact if all facts mentioned
                 if not has_unmentioned and "ExplainNewFact" in subactions:
                     subactions.remove("ExplainNewFact")
-                
-                # Remove RepeatFact if no facts mentioned yet
-                if len(mentioned_ids) == 0 and "RepeatFact" in subactions:
-                    subactions.remove("RepeatFact")
         
         return subactions
 
@@ -1114,10 +1109,9 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
                                if self.knowledge_graph.extract_fact_id(f) not in mentioned_ids]
             
             # FOR TRANSITION: Calculate target exhibit and museum coverage
-            # FIX: Also handle coarse config where "Engage" + "SuggestMove" = transition
             target_exhibit = None
             coverage_dict = None
-            is_transition_action = option == "OfferTransition" or subaction == "SuggestMove"
+            is_transition_action = option == "OfferTransition"
             if is_transition_action:
                 # Always select the least discussed/empty exhibit for transitions
                 target_exhibit = self._select_least_discussed_exhibit(ex_id)
@@ -1209,7 +1203,7 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
                 # For other actions, show all facts (mentioned + unmentioned)
                 facts_for_prompt = all_facts
 
-            # Get mentioned facts for RepeatFact actions
+            # Get facts mentioned so far at this exhibit
             mentioned_facts = [f for f in all_facts
                               if self.knowledge_graph.extract_fact_id(f) in self.facts_mentioned_per_exhibit[ex_id]]
 
@@ -1240,7 +1234,7 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
                 ex_id=ex_id,
                 last_utt=self.last_user_utterance,
                 facts_all=facts_for_prompt,
-                facts_used=mentioned_facts,  # Pass mentioned facts for RepeatFact
+                facts_used=mentioned_facts,  # Pass facts mentioned so far
                 selected_fact=None,
                 dialogue_history=self.dialogue_history,
                 exhibit_names=self.exhibit_keys,
@@ -1280,18 +1274,6 @@ IMPORTANT GUIDELINES:
 
 Example: "Created by Gerrit Dou in 1635 [TU_003]"
 Keep responses 2-3 sentences. NO HALLUCINATED FACT IDs."""
-            elif subaction in ("RepeatFact", "ClarifyFact"):
-                system_prompt = """You are a natural, conversational museum guide.
-
-IMPORTANT GUIDELINES:
-- Be natural and conversational - be concise and engaging
-- DO NOT quote or repeat what the visitor said verbatim (avoid phrases like "You said...", "I see you...")
-- Use conversation history to maintain natural flow and continuity
-- Reference past topics naturally when relevant, but don't quote them
-
-For RepeatFact: Use the EXACT fact ID provided in the prompt - do NOT modify it or create new ones.
-For ClarifyFact: Do NOT include fact IDs - just clarify the concept naturally.
-Keep responses 2-3 sentences."""
             else:
                 system_prompt = """You are a natural, conversational museum guide.
 
