@@ -176,6 +176,12 @@ Examples:
                        help='Broadened novelty: staleness penalty at exhausted exhibit for non-Explain actions (default: 1.0)')
     parser.add_argument('--alpha-transition', type=float, default=0.4,
                        help='Broadened novelty: reward for transition actions (default: 0.4)')
+    parser.add_argument('--alpha', type=float, default=1.0,
+                        help='Trajectory reward gain weight α (default: 1.0, prospect theory)')
+    parser.add_argument('--beta', type=float, default=2.25,
+                        help='Trajectory reward loss weight β (default: 2.25, Kahneman & Tversky 1979)')
+    parser.add_argument('--terminal-coverage-weight', type=float, default=5.0,
+                        help='Terminal coverage bonus R_terminal (default: 5.0)')
     parser.add_argument('--action-repeat-penalty', type=float, default=0.15,
                        help='Penalty per consecutive same-subaction over threshold (default: 0.15)')
     parser.add_argument('--action-repeat-threshold', type=int, default=2,
@@ -564,6 +570,9 @@ Examples:
     os.environ["HRL_ALPHA_ASK"] = str(args.alpha_ask)
     os.environ["HRL_ALPHA_STALE"] = str(args.alpha_stale)
     os.environ["HRL_ALPHA_TRANSITION"] = str(args.alpha_transition)
+    os.environ["HRL_ALPHA"] = str(args.alpha)
+    os.environ["HRL_BETA"] = str(args.beta)
+    os.environ["HRL_TERMINAL_COVERAGE_WEIGHT"] = str(args.terminal_coverage_weight)
 
     # Anti-spam: action repetition penalty
     os.environ["HRL_ACTION_REPEAT_PENALTY"] = str(args.action_repeat_penalty)

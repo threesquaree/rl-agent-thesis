@@ -92,6 +92,13 @@ class MuseumDialogueEnv(gym.Env):
         self.alpha_stale = float(os.environ.get("HRL_ALPHA_STALE", "1.0"))  # Increased from 0.5 to make staying at exhausted exhibits costly
         self.alpha_transition = float(os.environ.get("HRL_ALPHA_TRANSITION", "0.4"))  # Novelty reward for transitions
 
+        # ===== TRAJECTORY REWARD PARAMETERS (prospect theory) =====
+        # R_t = α·max(0, Δdwell) − β·max(0, −Δdwell) + R_terminal·coverage
+        # β/α = 2.25 from Kahneman & Tversky (1979)
+        self.alpha = float(os.environ.get("HRL_ALPHA", "1.0"))
+        self.beta = float(os.environ.get("HRL_BETA", "2.25"))
+        self.terminal_coverage_weight = float(os.environ.get("HRL_TERMINAL_COVERAGE_WEIGHT", "5.0"))
+
         # === AUGMENTED REWARD COMPONENTS (only used when reward_mode="augmented") ===
         # Responsiveness: +w_responsiveness (answer) / -0.6*w_responsiveness (deflect)
         self.w_responsiveness = float(os.environ.get("HRL_W_RESPONSIVENESS", "0.5"))
@@ -1728,3 +1735,7 @@ Keep responses 2-3 sentences."""
         except Exception:
             # Insights are optional; ignore failures
             pass
+
+
+# Alias for backward compatibility and test imports
+MuseumEnvironment = MuseumDialogueEnv
