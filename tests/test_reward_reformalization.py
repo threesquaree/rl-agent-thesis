@@ -115,6 +115,7 @@ def test_core_actions_present():
 
 
 def test_obs_dim_includes_trajectory():
+    os.environ.pop("HRL_RESPONSE_TYPE_FEATURE", None)  # ensure default (off)
     env = make_env()
     focus_dim = env.n_exhibits + 1
     history_dim = env.n_exhibits + len([sa for opt in env.options for sa in env.subactions[opt]])
@@ -144,3 +145,23 @@ def test_trajectory_feature_at_reset():
     delta_dwell = obs[-1]
     assert abs(dwell_norm - (2.0 * 0.0 - 1.0)) < 1e-5, f"dwell_norm at reset wrong: {dwell_norm}"
     assert abs(delta_dwell - 0.0) < 1e-5, f"delta_dwell at reset wrong: {delta_dwell}"
+
+
+def test_trajectory_feature_upper_boundary():
+    env = make_env()
+    env.reset()
+    env.dwell = 1.0
+    env._previous_dwell = 0.5
+    obs = env._get_obs()
+    assert abs(obs[-2] - 1.0) < 1e-5   # dwell_norm = 2×1.0-1 = 1.0
+    assert abs(obs[-1] - 0.5) < 1e-5   # delta = 1.0 - 0.5
+
+
+def test_trajectory_feature_negative_delta():
+    env = make_env()
+    env.reset()
+    env.dwell = 0.2
+    env._previous_dwell = 0.8
+    obs = env._get_obs()
+    assert abs(obs[-2] - (2.0 * 0.2 - 1.0)) < 1e-5   # dwell_norm = -0.6
+    assert abs(obs[-1] - (-0.6)) < 1e-5                # delta = 0.2 - 0.8

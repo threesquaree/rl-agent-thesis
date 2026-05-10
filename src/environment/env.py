@@ -855,7 +855,7 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
             state_components.append(response_type_onehot)
 
         # τ_t trajectory feature: [dwell_t_norm, Δdwell_t]
-        # dwell_t_norm maps [0,1] → [-1,1]; Δdwell_t is naturally in [-1,1]
+        # dwell is clipped to [0,1] in update_user_state, so both features are in [-1,1]
         dwell_norm = float(2.0 * self.dwell - 1.0)
         delta_dwell = float(self.dwell - self._previous_dwell)
         state_components.append(np.array([dwell_norm, delta_dwell], dtype=np.float32))
@@ -1377,7 +1377,7 @@ Keep responses 2-3 sentences."""
         if focus is not None:
             self.focus = focus
         if dwell is not None:
-            self.dwell = dwell
+            self.dwell = float(np.clip(dwell, 0.0, 1.0))
         if utterance is not None:
             self.last_user_utterance = utterance
             self._update_dialogue_history("user", utterance)
