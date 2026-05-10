@@ -170,18 +170,19 @@ class MuseumDialogueEnv(gym.Env):
         if options_override is not None:
             self.options = options_override
         else:
-            self.options = ["Explain", "AskQuestion", "OfferTransition", "Conclude"]
-        
+            self.options = ["Explain", "AskQuestion", "OfferTransition", "Conclude", "Engage"]
+
         # Low-level subactions within each option (per paper.tex Table 1)
         # Can be overridden for H6 (option granularity experiments)
         if subactions_override is not None:
             self.subactions = subactions_override
         else:
             self.subactions = {
-                "Explain": ["ExplainNewFact", "RepeatFact", "ClarifyFact"],
-                "AskQuestion": ["AskOpinion", "AskMemory", "AskClarification"],
+                "Explain":         ["ExplainNewFact"],
+                "AskQuestion":     ["AskOpinion", "AskClarification"],
                 "OfferTransition": ["SummarizeAndSuggest"],
-                "Conclude": ["WrapUp"]
+                "Conclude":        ["WrapUp"],
+                "Engage":          ["RecoverEngagement"],
             }
         
         # Action masking parameters for dialogue coherence
@@ -817,14 +818,16 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         
         # 5. Subaction availability indicators (4-d binary vector)
         # [0]: ExplainNewFact available (1.0) or masked (0.0)
-        # [1]: ClarifyFact available (1.0) or masked (0.0)
-        # [2]: RepeatFact available (1.0) or masked (0.0)
+        # [1]: AskOpinion available (1.0) or masked (0.0)
+        # [2]: RecoverEngagement available (1.0) or masked (0.0)
         # [3]: Exhibit exhausted indicator (1.0 if exhausted, 0.0 otherwise)
         subaction_availability = np.zeros(4, dtype=np.float32)
         available_subs = self._get_available_subactions("Explain")
         subaction_availability[0] = 1.0 if "ExplainNewFact" in available_subs else 0.0
-        subaction_availability[1] = 1.0 if "ClarifyFact" in available_subs else 0.0
-        subaction_availability[2] = 1.0 if "RepeatFact" in available_subs else 0.0
+        available_subs_ask = self._get_available_subactions("AskQuestion")
+        subaction_availability[1] = 1.0 if "AskOpinion" in available_subs_ask else 0.0
+        available_subs_engage = self._get_available_subactions("Engage")
+        subaction_availability[2] = 1.0 if "RecoverEngagement" in available_subs_engage else 0.0
         # Get current exhibit first to avoid warning when focus=0 (passes exhibit explicitly)
         current_exhibit = self._get_current_exhibit()  # Get once, handles focus=0 gracefully
         subaction_availability[3] = 1.0 if self._is_exhibit_exhausted(current_exhibit) else 0.0

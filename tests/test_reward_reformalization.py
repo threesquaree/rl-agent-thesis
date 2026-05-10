@@ -83,3 +83,31 @@ def test_trajectory_reward_flat():
     delta = env.dwell - env._previous_dwell
     reward = env.alpha * max(0.0, delta) - env.beta * max(0.0, -delta)
     assert abs(reward - 0.0) < 1e-6
+
+
+def test_action_space_has_six_subactions():
+    env = make_env()
+    all_subs = [sa for opt in env.options for sa in env.subactions[opt]]
+    assert len(all_subs) == 6, f"Expected 6 subactions, got {len(all_subs)}: {all_subs}"
+
+
+def test_removed_actions_absent():
+    env = make_env()
+    all_subs = [sa for opt in env.options for sa in env.subactions[opt]]
+    assert "RepeatFact" not in all_subs
+    assert "ClarifyFact" not in all_subs
+    assert "AskMemory" not in all_subs
+
+
+def test_new_action_present():
+    env = make_env()
+    all_subs = [sa for opt in env.options for sa in env.subactions[opt]]
+    assert "RecoverEngagement" in all_subs
+
+
+def test_core_actions_present():
+    env = make_env()
+    all_subs = [sa for opt in env.options for sa in env.subactions[opt]]
+    for action in ["ExplainNewFact", "AskOpinion", "AskClarification",
+                   "SummarizeAndSuggest", "WrapUp"]:
+        assert action in all_subs, f"{action} missing from action space"
