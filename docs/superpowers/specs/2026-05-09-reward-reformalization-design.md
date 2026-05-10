@@ -117,9 +117,10 @@ Proposed: s_t = [f_t, h_t, i_t, c_t, τ_t]
 - Replace `R_t = engagement + novelty` with asymmetric delta formula
 - Add CLI-configurable `--alpha`, `--beta`, `--terminal_coverage_weight`
 
-### hybrid_simulator.py / sim8_adapter.py
+### sim8_adapter.py
 - Add `RecoverEngagement` response handler with specified dwell curve
 - Diminishing returns tracking for consecutive RecoverEngagement use
+- Note: hybrid_simulator.py is out of scope — training uses Sim8 only
 
 ### train.py
 - New CLI flags: `--alpha` (default 1.0), `--beta` (default 2.25), `--terminal_coverage_weight` (default 5.0)
@@ -140,6 +141,6 @@ Proposed: s_t = [f_t, h_t, i_t, c_t, τ_t]
 
 ## 7. Implementation Notes
 
-- All changes go in a **duplicate repository** — the existing Thesis repo is not modified
+- All changes go in 'reward-reformalization' branch — the existing Thesis repo is not modified
 - Existing experiments remain reproducible from the original repo
 - New experiments run from the duplicate with the reformalized reward
