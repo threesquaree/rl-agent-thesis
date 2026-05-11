@@ -165,3 +165,54 @@ def test_trajectory_feature_negative_delta():
     obs = env._get_obs()
     assert abs(obs[-2] - (2.0 * 0.2 - 1.0)) < 1e-5   # dwell_norm = -0.6
     assert abs(obs[-1] - (-0.6)) < 1e-5                # delta = 0.2 - 0.8
+
+
+def make_sim8():
+    from src.simulator.sim8_adapter import Sim8Adapter
+    return Sim8Adapter()
+
+
+def test_recover_engagement_first_use_dwell_range():
+    sim = make_sim8()
+    sim.reset()
+    dwells = []
+    for _ in range(30):
+        sim._consecutive_recover_count = 0
+        gaze = sim._synthesize_contextual_gaze(
+            rtype="statement",
+            agent_option="Engage",
+            agent_subaction="RecoverEngagement",
+            engagement_adjust_multiplier=1.0,
+        )
+        dwells.append(gaze[0])
+    assert all(0.10 <= d <= 1.0 for d in dwells)
+    assert sum(dwells) / len(dwells) > 0.50
+
+
+def test_recover_engagement_diminishing_returns():
+    sim = make_sim8()
+    sim.reset()
+    sim._consecutive_recover_count = 2  # simulate 3rd+ use
+    dwells = []
+    for _ in range(30):
+        gaze = sim._synthesize_contextual_gaze(
+            rtype="statement",
+            agent_option="Engage",
+            agent_subaction="RecoverEngagement",
+            engagement_adjust_multiplier=1.0,
+        )
+        dwells.append(gaze[0])
+    assert sum(dwells) / len(dwells) < 0.45
+
+
+def test_recover_count_resets_on_other_action():
+    sim = make_sim8()
+    sim.reset()
+    sim._consecutive_recover_count = 3
+    sim._synthesize_contextual_gaze(
+        rtype="acknowledgment",
+        agent_option="Explain",
+        agent_subaction="ExplainNewFact",
+        engagement_adjust_multiplier=1.0,
+    )
+    assert sim._consecutive_recover_count == 0

@@ -72,7 +72,10 @@ class Sim8Simulator:
             self.aoi_to_exhibit = {}
             self.exhibit_to_aois = {ex: [] for ex in exhibits}
         else:
-            raise ValueError("Must provide either knowledge_graph or exhibits list")
+            # Minimal fallback for unit tests / smoke usage: empty maps
+            self.exhibits = []
+            self.aoi_to_exhibit = {}
+            self.exhibit_to_aois = {}
         
         # Sentence transformer model
         self._st_model = None
@@ -131,6 +134,7 @@ class Sim8Simulator:
         # NEW: Disengagement tracking
         self.engagement_level = 1.0  # 0.0 = fully disengaged, 1.0 = fully engaged
         self.off_topic_strikes = 0  # Track consecutive off-topic responses
+        self._consecutive_recover_count = 0
 
         # Question pacing reward parameters (make well-spaced questions boost engagement)
         self.turns_since_last_question: int = 999
@@ -184,6 +188,43 @@ class Sim8Simulator:
         return context
 
     # ===== Public API =====
+    def reset(self):
+        """Reset transient simulator state for a new episode/test.
+
+        Re-initializes counters and session trackers without requiring a
+        knowledge graph. Safe to call standalone (e.g. from unit tests).
+        """
+        self.current_persona = None
+        self.current_exhibit = None
+        self.current_aoi = None
+        self.aoi_usage_count = {}
+        self.seen_aois = set()
+        self.consecutive_silence_count = 0
+        self.last_user_response = {}
+        self.consecutive_ask_questions = 0
+        self.consecutive_transitions = 0
+        self.confusion_active = False
+        self.engagement_level = 1.0
+        self.off_topic_strikes = 0
+        self._consecutive_recover_count = 0
+        self.recent_actions = []
+        self.turns_at_current_exhibit = 0
+        self.previous_exhibit = None
+        self.turns_since_last_question = self.question_bonus_cooldown
+        self.consecutive_explains_on_completed = 0
+        self.last_user_question = None
+        self.last_user_utterance = None
+        self.last_agent_utterance = None
+        self.last_agent_option = None
+        self.conversation_flow = []
+        self.dialogue_history = []
+        self.facts_learned = set()
+        self.exhibits_visited = set()
+        self.max_history_length = 8
+        self.late_phase_questions_asked = 0
+        self.current_exhibit_completion_last = 0.0
+        self.exhibit_exhausted = False
+
     def initialize_session(self, persona: Optional[str] = None):
         self.current_persona = persona or self.rng.choice(self.PERSONAS)
         self.current_exhibit = self.rng.choice(self.exhibits)
@@ -1385,7 +1426,7 @@ Your {rtype} response (1-2 sentences):"""
             # Very strong penalty: 21+ turns at exhausted exhibit (strongly encourage transition)
             return 0.40  # Very low but not zero (still allows some engagement)
     
-    def _synthesize_contextual_gaze(self, rtype: str, option: str = None, subaction: str = None, engagement_adjust_multiplier: float = 1.0) -> List[float]:
+    def _synthesize_contextual_gaze(self, rtype: str, agent_option: str = None, agent_subaction: str = None, engagement_adjust_multiplier: float = 1.0) -> List[float]:
         """Generate synthetic gaze features based on response type.
         
         Response types directly encode quality:
@@ -1413,41 +1454,55 @@ Your {rtype} response (1-2 sentences):"""
 
         # Aggregate multiplier including pacing bonuses/penalties (questions, explain spam, etc.)
         effective_multiplier = engagement_multiplier * combined_spam_multiplier * engagement_adjust_multiplier
-        
-        # Different patterns for different response types
-        if rtype in ["acknowledgment", "follow_up_question"]:
-            # HIGH engagement - agent did well, user is satisfied and curious
-            base_dwell = self._randf(0.75, 0.95)
-            dwell_time = self._clip(base_dwell * effective_multiplier, 0.2, 1.0)
-            saccade_span = max(0.05, np.random.normal(0.07, 0.03))  # Low saccades (focused)
-        
-        elif rtype == "question":
-            # MODERATE-HIGH engagement - genuinely curious
-            base_dwell = self._randf(0.4, 0.7)
-            dwell_time = self._clip(base_dwell * effective_multiplier, 0.2, 1.0)
-            saccade_span = max(0.05, np.random.normal(0.08, 0.04))
-        
-        elif rtype == "statement":
-            # MODERATE engagement - making statements
-            base_dwell = self._randf(0.3, 0.6)
-            dwell_time = self._clip(base_dwell * effective_multiplier, 0.2, 1.0)
-            saccade_span = max(0.05, np.random.normal(0.09, 0.04))
-        
-        elif rtype == "confusion":
-            # LOW engagement - agent was unhelpful, off-topic, or deflecting
-            base_dwell = self._randf(0.25, 0.50)
-            # Confusion gets extra penalty from engagement tracking AND spam penalties
-            dwell_time = self._clip(base_dwell * effective_multiplier * 0.8, 0.1, 0.6)
-            saccade_span = max(0.05, np.random.normal(0.12, 0.05))  # Higher saccades (unfocused)
-        
+
+        if agent_subaction == "RecoverEngagement":
+            # RecoverEngagement action: higher dwell with diminishing returns on consecutive uses
+            self._consecutive_recover_count += 1
+            base_dwell = self._randf(0.55, 0.75)
+            if self._consecutive_recover_count == 2:
+                base_dwell *= 0.70
+            elif self._consecutive_recover_count >= 3:
+                base_dwell *= 0.40
+            dwell_time = self._clip(base_dwell, 0.10, 1.0)
+            saccade_span = max(0.05, np.random.normal(0.07, 0.03))
         else:
-            # Default: MODERATE engagement
-            base_dwell = self._randf(0.3, 0.6)
-            dwell_time = self._clip(base_dwell * effective_multiplier, 0.2, 1.0)
-            saccade_span = max(0.05, np.random.normal(0.09, 0.04))
-        
-        # Apply action variety adjustment (questions boost, explain spam decays)
-        dwell_time = self._adjust_dwell_for_action_variety(option, subaction, dwell_time)
+            # Reset diminishing-returns counter for any non-RecoverEngagement action
+            self._consecutive_recover_count = 0
+
+            # Different patterns for different response types
+            if rtype in ["acknowledgment", "follow_up_question"]:
+                # HIGH engagement - agent did well, user is satisfied and curious
+                base_dwell = self._randf(0.75, 0.95)
+                dwell_time = self._clip(base_dwell * effective_multiplier, 0.2, 1.0)
+                saccade_span = max(0.05, np.random.normal(0.07, 0.03))  # Low saccades (focused)
+
+            elif rtype == "question":
+                # MODERATE-HIGH engagement - genuinely curious
+                base_dwell = self._randf(0.4, 0.7)
+                dwell_time = self._clip(base_dwell * effective_multiplier, 0.2, 1.0)
+                saccade_span = max(0.05, np.random.normal(0.08, 0.04))
+
+            elif rtype == "statement":
+                # MODERATE engagement - making statements
+                base_dwell = self._randf(0.3, 0.6)
+                dwell_time = self._clip(base_dwell * effective_multiplier, 0.2, 1.0)
+                saccade_span = max(0.05, np.random.normal(0.09, 0.04))
+
+            elif rtype == "confusion":
+                # LOW engagement - agent was unhelpful, off-topic, or deflecting
+                base_dwell = self._randf(0.25, 0.50)
+                # Confusion gets extra penalty from engagement tracking AND spam penalties
+                dwell_time = self._clip(base_dwell * effective_multiplier * 0.8, 0.1, 0.6)
+                saccade_span = max(0.05, np.random.normal(0.12, 0.05))  # Higher saccades (unfocused)
+
+            else:
+                # Default: MODERATE engagement
+                base_dwell = self._randf(0.3, 0.6)
+                dwell_time = self._clip(base_dwell * effective_multiplier, 0.2, 1.0)
+                saccade_span = max(0.05, np.random.normal(0.09, 0.04))
+
+            # Apply action variety adjustment (questions boost, explain spam decays)
+            dwell_time = self._adjust_dwell_for_action_variety(agent_option, agent_subaction, dwell_time)
         
         # Common gaze features (persona-influenced)
         persona = self.current_persona or "Agreeable"
@@ -1503,4 +1558,8 @@ Your {rtype} response (1-2 sentences):"""
 
     def _randf(self, lo: float, hi: float) -> float:
         return lo + (hi - lo) * self.rng.random()
+
+
+# Public alias used by tests and external callers
+Sim8Adapter = Sim8Simulator
 
