@@ -264,6 +264,7 @@ class MuseumDialogueEnv(gym.Env):
         self.dwell = 0.0  # Current dwell time (engagement signal)
         self.last_user_utterance = ""
         self._previous_dwell = 0.0  # Store previous dwell for lagged rewards
+        self._last_delta_dwell = 0.0  # Cached per-step Δdwell exposed to _get_obs()
         self._dwell_ema = 0.5  # Reset EMA to neutral midpoint at episode start
         self._last_user_intent = "statement"  # Track user intent for responsiveness
         self._last_user_response_type = "statement"  # Track simulator's response type (question, confusion, etc.)
@@ -517,7 +518,6 @@ class MuseumDialogueEnv(gym.Env):
         
         # If all exhibits are complete, automatically conclude the episode
         # (unless agent already chose to conclude manually)
-        completion_bonus = 0.0
         auto_concluded = False
         if all_exhibits_complete and option != "Conclude":  # Don't override if already concluded manually
             auto_concluded = True
@@ -598,11 +598,6 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
                 self.dialogue_history.pop()
             self._update_dialogue_history("agent", agent_response)
             
-            # Award flat completion bonus
-            completion_bonus = self.w_completion_bonus
-            if verbose:
-                print(f"🎉 COMPLETION BONUS: +{completion_bonus:.2f} (all exhibits at 100% coverage!)")
-            
             # Override done flag to end episode
             done = True
         
@@ -644,6 +639,8 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
         self.terminal_bonus_sum = getattr(self, 'terminal_bonus_sum', 0.0) + terminal_bonus
         self.deliberation_sum -= self.deliberation_cost
         
+        # Cache delta before update so _get_obs() sees the correct Δdwell for this step
+        self._last_delta_dwell = delta_dwell
         # Store current dwell for NEXT turn's reward
         self._previous_dwell = self.dwell
         
@@ -856,8 +853,10 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
 
         # τ_t trajectory feature: [dwell_t_norm, Δdwell_t]
         # dwell is clipped to [0,1] in update_user_state, so both features are in [-1,1]
+        # Use _last_delta_dwell (cached in step() before _previous_dwell update) so this
+        # reflects the actual change this step, not 0 after the reassignment.
         dwell_norm = float(2.0 * self.dwell - 1.0)
-        delta_dwell = float(self.dwell - self._previous_dwell)
+        delta_dwell = float(self._last_delta_dwell)
         state_components.append(np.array([dwell_norm, delta_dwell], dtype=np.float32))
 
         obs = np.concatenate(state_components).astype(np.float32)

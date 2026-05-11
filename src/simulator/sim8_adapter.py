@@ -250,6 +250,7 @@ class Sim8Simulator:
         
         # Reset action variety tracking (for dynamic dwell adjustment)
         self.recent_actions = []
+        self._consecutive_recover_count = 0
         
         # Reset exhibit duration tracking
         self.turns_at_current_exhibit = 0

@@ -130,6 +130,7 @@ def test_trajectory_feature_values():
     env.reset()
     env.dwell = 0.75
     env._previous_dwell = 0.50
+    env._last_delta_dwell = 0.25  # cache what step() would have stored
     obs = env._get_obs()
     dwell_norm = obs[-2]
     delta_dwell = obs[-1]
@@ -152,6 +153,7 @@ def test_trajectory_feature_upper_boundary():
     env.reset()
     env.dwell = 1.0
     env._previous_dwell = 0.5
+    env._last_delta_dwell = 0.5  # cache what step() would have stored
     obs = env._get_obs()
     assert abs(obs[-2] - 1.0) < 1e-5   # dwell_norm = 2×1.0-1 = 1.0
     assert abs(obs[-1] - 0.5) < 1e-5   # delta = 1.0 - 0.5
@@ -162,9 +164,25 @@ def test_trajectory_feature_negative_delta():
     env.reset()
     env.dwell = 0.2
     env._previous_dwell = 0.8
+    env._last_delta_dwell = -0.6  # cache what step() would have stored
     obs = env._get_obs()
     assert abs(obs[-2] - (2.0 * 0.2 - 1.0)) < 1e-5   # dwell_norm = -0.6
     assert abs(obs[-1] - (-0.6)) < 1e-5                # delta = 0.2 - 0.8
+
+
+def test_delta_dwell_reads_from_cache_not_recomputed():
+    """_get_obs() must read _last_delta_dwell, not recompute dwell - _previous_dwell.
+
+    After step() runs, _previous_dwell == dwell, so recomputing gives 0.
+    The cache holds the actual per-step delta — this test verifies _get_obs uses it.
+    """
+    env = make_env()
+    env.reset()
+    env.dwell = 0.7
+    env._previous_dwell = 0.7   # equal: recomputing would give 0
+    env._last_delta_dwell = 0.4  # cache holds what step() measured
+    obs = env._get_obs()
+    assert abs(obs[-1] - 0.4) < 1e-5, f"Expected 0.4 from cache, got {obs[-1]}"
 
 
 def make_sim8():
