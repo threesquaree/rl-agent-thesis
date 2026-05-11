@@ -20,8 +20,8 @@ def build_prompt(option: str, subaction: str, ex_id: Optional[str],
     
     # H6: Handle coarse option granularity by mapping coarse options to original option names
     # for prompt construction purposes
-    if option == "Engage":
-        # Map subaction to its original option for prompt routing
+    if option == "Engage" and subaction != "RecoverEngagement":
+        # Map subaction to its original option for prompt routing (HRL coarse option only)
         from src.agent.option_configs import get_subaction_origin
         option = get_subaction_origin(subaction)
     elif option == "Transition":
@@ -63,7 +63,11 @@ def build_prompt(option: str, subaction: str, ex_id: Optional[str],
             return build_wrap_up_prompt(ex_id, context_section, facts_all, facts_used, current_completion)
         elif subaction == "SummarizeKeyPoints":
             return build_summarize_key_points_prompt(ex_id, context_section, facts_all, facts_used, current_completion)
-    
+
+    elif option == "Engage":
+        if subaction == "RecoverEngagement":
+            return build_recover_engagement_prompt(ex_id, context_section, facts_all, facts_used, current_completion)
+
     # Should never reach here - all options should be handled above
     raise ValueError(f"Unknown option '{option}' or subaction '{subaction}'")
 
@@ -338,6 +342,27 @@ AskOpinion policy:
 5. Do not introduce new facts.
 6. Do not include any [FACT_ID].
 7. Maximum two sentences.
+
+Response:"""
+
+
+def build_recover_engagement_prompt(ex_id: Optional[str], context_section: str,
+                                    facts_all: List[str], facts_used: List[str],
+                                    current_completion: float = 0.0) -> str:
+    """Build prompt for RecoverEngagement — re-engage a disengaged visitor with a light hook."""
+    return f"""[CONTEXT - DO NOT REPEAT]
+Museum guide at: {ex_id} | Progress: {current_completion:.1%} covered
+---
+
+{context_section}
+
+RecoverEngagement policy:
+1. The visitor seems less engaged. Do NOT introduce new facts or continue the main content.
+2. Deliver one short, surprising or relatable hook loosely tied to this exhibit.
+   - A "did you know?" curiosity, a brief real-world connection, or a light anecdote.
+3. End with one very easy, low-stakes question (yes/no or choice) to invite a response.
+4. Warm, conversational tone — two sentences maximum.
+5. Do not quote the visitor or repeat their words verbatim.
 
 Response:"""
 

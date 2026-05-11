@@ -615,7 +615,22 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
             - self.beta * max(0.0, -delta_dwell)
         )
 
+        # Cache delta before update so _get_obs() sees the correct Δdwell for this step
+        self._last_delta_dwell = delta_dwell
+        # Store current dwell for NEXT turn's reward
+        self._previous_dwell = self.dwell
+
+        # Update turn count
+        self.turn_count += 1
+
+        # Determine done — auto_concluded takes priority, otherwise check Conclude/max_turns
+        if auto_concluded:
+            done = True
+        else:
+            done = (option == "Conclude" or self.turn_count >= self.max_turns)
+
         # Terminal coverage bonus — absorbs novelty signal at episode end
+        # Computed after done is known so it fires for all termination paths
         exhibits_covered = 0
         terminal_bonus = 0.0
         if done:
@@ -633,32 +648,17 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
             if terminal_bonus > 0:
                 print(f"🏁 TERMINAL BONUS: +{terminal_bonus:.3f} "
                       f"({exhibits_covered}/{self.n_exhibits} exhibits covered)")
-        
+
         # Track reward components for analysis
         self.trajectory_reward_sum = getattr(self, 'trajectory_reward_sum', 0.0) + trajectory_reward
         self.terminal_bonus_sum = getattr(self, 'terminal_bonus_sum', 0.0) + terminal_bonus
         self.deliberation_sum -= self.deliberation_cost
-        
-        # Cache delta before update so _get_obs() sees the correct Δdwell for this step
-        self._last_delta_dwell = delta_dwell
-        # Store current dwell for NEXT turn's reward
-        self._previous_dwell = self.dwell
-        
+
         # Update session reward
         self.session_reward += step_reward
-        
+
         # Update exhibits covered count
         exhibits_covered = sum(1 for exp in self.explained if exp > 0)
-        
-        # Update turn count
-        self.turn_count += 1
-        
-        # Check termination conditions
-        # Note: done may already be True if auto_concluded above
-        if auto_concluded:
-            done = True  # Already set above, but ensure it's True
-        else:
-            done = (option == "Conclude" or self.turn_count >= self.max_turns)
         
         # Calculate current exhibit completion rate for transition logic
         current_exhibit_completion = len(self.facts_mentioned_per_exhibit[ex_id]) / len(self.knowledge_graph.get_exhibit_facts(ex_id)) if len(self.knowledge_graph.get_exhibit_facts(ex_id)) > 0 else 0.0
