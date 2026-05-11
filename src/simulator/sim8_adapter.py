@@ -72,10 +72,7 @@ class Sim8Simulator:
             self.aoi_to_exhibit = {}
             self.exhibit_to_aois = {ex: [] for ex in exhibits}
         else:
-            # Minimal fallback for unit tests / smoke usage: empty maps
-            self.exhibits = []
-            self.aoi_to_exhibit = {}
-            self.exhibit_to_aois = {}
+            raise ValueError("Must provide either knowledge_graph or exhibits list")
         
         # Sentence transformer model
         self._st_model = None

@@ -169,7 +169,7 @@ def test_trajectory_feature_negative_delta():
 
 def make_sim8():
     from src.simulator.sim8_adapter import Sim8Adapter
-    return Sim8Adapter()
+    return Sim8Adapter(exhibits=["exhibit_1"])
 
 
 def test_recover_engagement_first_use_dwell_range():
@@ -187,6 +187,25 @@ def test_recover_engagement_first_use_dwell_range():
         dwells.append(gaze[0])
     assert all(0.10 <= d <= 1.0 for d in dwells)
     assert sum(dwells) / len(dwells) > 0.50
+
+
+def test_recover_engagement_second_use_dwell_range():
+    """2nd consecutive use: base × 0.70 → expected mean ~0.455, distinct from 1st (>0.50) and 3rd+ (<0.45)"""
+    sim = make_sim8()
+    sim.reset()
+    dwells = []
+    for _ in range(30):
+        sim._consecutive_recover_count = 1  # always test the 2nd-use (×0.70) path
+        gaze = sim._synthesize_contextual_gaze(
+            rtype="statement",
+            agent_option="Engage",
+            agent_subaction="RecoverEngagement",
+            engagement_adjust_multiplier=1.0,
+        )
+        dwells.append(gaze[0])
+    mean_dwell = sum(dwells) / len(dwells)
+    # base ∈ [0.55, 0.75] × 0.70 = [0.385, 0.525]; bounds chosen to be distinct from 1st-use (>0.50) and 3rd+ (<0.45)
+    assert 0.30 < mean_dwell < 0.55, f"2nd-use mean dwell {mean_dwell:.3f} outside expected (0.30, 0.55)"
 
 
 def test_recover_engagement_diminishing_returns():
