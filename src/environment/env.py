@@ -690,6 +690,7 @@ Thank the visitor for exploring all exhibits. Keep it warm and brief (2-3 senten
             "reward_deliberation_cost": -self.deliberation_cost,
             "auto_concluded": auto_concluded,  # Whether episode was automatically concluded due to 100% coverage
             "dwell": self.dwell,
+            "delta_dwell": self._last_delta_dwell,
             "total_reward": step_reward,
             "session_reward": self.session_reward,
             "turn": self.turn_count,

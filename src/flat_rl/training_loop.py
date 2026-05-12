@@ -293,7 +293,8 @@ class FlatTrainingLoop(HRLTrainingLoop):
                 "option": info.get("option", "Unknown"),  # For compatibility
                 "subaction": info.get("subaction", "Unknown"),  # For compatibility
                 "flat_action_name": info.get("flat_action_name", ""),  # Flat RL specific
-                "dwell": user_response.get("gaze_features", [0.0])[0],
+                "dwell": info.get("dwell", user_response.get("gaze_features", [0.0])[0]),
+                "delta_dwell": info.get("delta_dwell", 0.0),
                 "response_type": user_response.get("response_type", "unknown"),
                 "current_exhibit": info.get("current_exhibit", "Unknown"),
                 "facts_shared": info.get("facts_shared", 0),
